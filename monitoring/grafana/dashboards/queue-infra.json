@@ -1,0 +1,93 @@
+{
+  "dashboard": {
+    "title": "API-LOCAL — Queue & Infrastructure",
+    "uid": "api-local-infra",
+    "tags": ["api-local", "queue", "infra"],
+    "timezone": "browser",
+    "refresh": "15s",
+    "panels": [
+      {
+        "title": "Queue : elements en attente",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+        "targets": [{ "expr": "queue_size{status=\"PENDING\"}", "legendFormat": "PENDING" }]
+      },
+      {
+        "title": "Queue : elements echoues",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+        "targets": [{ "expr": "queue_size{status=\"FAILED\"}", "legendFormat": "FAILED" }]
+      },
+      {
+        "title": "Queue : age du plus ancien",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
+        "targets": [{ "expr": "queue_oldest_pending_seconds", "legendFormat": "Secondes" }],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "title": "Queue : debit traitement",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+        "targets": [
+          { "expr": "rate(queue_processed_total{status=\"DONE\"}[5m])", "legendFormat": "DONE/s" },
+          { "expr": "rate(queue_processed_total{status=\"FAILED\"}[5m])", "legendFormat": "FAILED/s" }
+        ]
+      },
+      {
+        "title": "Queue : duree traitement P95",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(queue_processing_duration_seconds_bucket[5m]))", "legendFormat": "P95" }]
+      },
+      {
+        "title": "Latence SQL Server",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(db_connection_latency_seconds_bucket{database=\"sqlserver\"}[5m]))", "legendFormat": "P95" }]
+      },
+      {
+        "title": "Latence API-VPS",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(db_connection_latency_seconds_bucket{database=\"api-vps\"}[5m]))", "legendFormat": "P95" }]
+      },
+      {
+        "title": "CPU container",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
+        "targets": [{ "expr": "rate(process_cpu_seconds_total[5m])", "legendFormat": "CPU" }]
+      },
+      {
+        "title": "Memoire (RSS)",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 8, "x": 8, "y": 18 },
+        "targets": [{ "expr": "process_resident_memory_bytes", "legendFormat": "RSS" }],
+        "fieldConfig": { "defaults": { "unit": "bytes" } }
+      },
+      {
+        "title": "Event loop lag",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 8, "x": 16, "y": 18 },
+        "targets": [{ "expr": "nodejs_eventloop_lag_seconds", "legendFormat": "Lag" }],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "title": "Heap Node.js",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 24 },
+        "targets": [
+          { "expr": "nodejs_heap_size_used_bytes", "legendFormat": "Used" },
+          { "expr": "nodejs_heap_size_total_bytes", "legendFormat": "Total" }
+        ],
+        "fieldConfig": { "defaults": { "unit": "bytes" } }
+      },
+      {
+        "title": "Requetes HTTP / min",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 24 },
+        "targets": [{ "expr": "rate(http_requests_total[1m])", "legendFormat": "{{ method }} {{ route }} {{ status }}" }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+groups:
+  - name: api-local-sync
+    rules:
+      - alert: SyncDown
+        expr: time() - sync_last_success_timestamp{type="incremental"} > 600
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sync incrementale inactive depuis > 10 min ({{ $labels.entity }})"
+
+      - alert: QueueBacklog
+        expr: queue_size{status="PENDING"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue locale > 1000 elements en attente"
+
+      - alert: ApiVpsDown
+        expr: vps_connection_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API-VPS inaccessible depuis > 2 min"
+
+      - alert: ApiVpsHighLatency
+        expr: histogram_quantile(0.95, rate(vps_request_duration_seconds_bucket[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latence vers API-VPS > 10s"
+
+      - alert: SqlServerDown
+        expr: db_connection_up{database="sqlserver"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SQL Server inaccessible depuis > 2 min"
+
+      - alert: HighSyncLatency
+        expr: histogram_quantile(0.95, rate(sync_cycle_duration_seconds_bucket[5m])) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 duree de sync > 60s ({{ $labels.entity }})"
+
+      - alert: EventLoopLag
+        expr: nodejs_eventloop_lag_seconds > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Event loop lag Node.js > 1s"
+
+      - alert: ContainerHighMemory
+        expr: process_resident_memory_bytes > 512 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container api-local utilise > 512 Mo de RAM"
+
+      - alert: HighErrorRate
+        expr: rate(sync_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taux d'erreurs de sync > 0.1/s"

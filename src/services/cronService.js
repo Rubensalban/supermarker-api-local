@@ -1,0 +1,111 @@
+const cron = require('node-cron');
+const config = require('../config/env');
+const { appLogger, syncLogger } = require('../utils/logger');
+const syncService = require('./syncService');
+const queueService = require('./queueService');
+const healthService = require('./healthService');
+const alertService = require('./alertService');
+const metricsService = require('./metricsService');
+const vpsService = require('./vpsService');
+const metrics = require('../config/prometheus');
+
+function start() {
+  // Sync incrementale
+  cron.schedule(`*/${config.sync.incrementalInterval} * * * *`, async () => {
+    if (syncService.isPaused()) return;
+    syncLogger.info('Cron: sync incrementale demarree');
+    try {
+      const results = await syncService.syncAllIncremental();
+      for (const r of results) {
+        alertService.trackSyncResult(r.entity, !r.error);
+      }
+    } catch (err) {
+      appLogger.error('Cron: erreur sync incrementale', { error: err.message });
+    }
+  });
+
+  // Sync complete (detection suppressions)
+  cron.schedule(`0 */${config.sync.fullInterval} * * * *`, async () => {
+    if (syncService.isPaused()) return;
+    syncLogger.info('Cron: sync complete demarree');
+    try {
+      await syncService.syncAllFull();
+    } catch (err) {
+      appLogger.error('Cron: erreur sync complete', { error: err.message });
+    }
+  });
+
+  // Traitement de la queue
+  cron.schedule(`*/${config.sync.queueProcessInterval} * * * * *`, async () => {
+    if (syncService.isPaused()) return;
+
+    const vpsUp = healthService.isVpsUp();
+    if (!vpsUp) return;
+
+    const pending = queueService.getPending(config.vps.batchSize);
+    if (pending.length === 0) return;
+
+    // Regrouper par entity_type
+    const grouped = {};
+    for (const item of pending) {
+      if (!grouped[item.entity_type]) grouped[item.entity_type] = [];
+      grouped[item.entity_type].push(item);
+    }
+
+    for (const [entityType, items] of Object.entries(grouped)) {
+      const records = items.map(item => {
+        queueService.markProcessing(item.id);
+        return JSON.parse(item.payload);
+      });
+
+      const timer = metrics.queueProcessingDuration.startTimer();
+      try {
+        await vpsService.sendBatch(entityType, 'UPSERT', records);
+        for (const item of items) {
+          queueService.markDone(item.id);
+        }
+        timer();
+      } catch (err) {
+        timer();
+        for (const item of items) {
+          if (item.attempts + 1 >= item.max_attempts) {
+            queueService.markFailed(item.id, err.message);
+            alertService.fireAlert('queue_item_max_retries', 'ERROR',
+              `Element ${item.sage_id} a atteint le max de tentatives`,
+              { sage_id: item.sage_id, entity: entityType });
+          } else {
+            queueService.incrementAttempts(item.id, err.message);
+          }
+        }
+      }
+    }
+  });
+
+  // Healthcheck
+  cron.schedule(`*/${config.sync.healthcheckInterval} * * * * *`, async () => {
+    await healthService.checkAll();
+  });
+
+  // Evaluation des alertes
+  cron.schedule(`*/${config.alerts.checkInterval} * * * * *`, () => {
+    alertService.evaluate();
+  });
+
+  // Mise a jour metriques queue
+  cron.schedule('*/15 * * * * *', () => {
+    metricsService.refreshQueueMetrics();
+  });
+
+  // Nettoyage logs sync (quotidien a 3h)
+  cron.schedule('0 3 * * *', () => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const db = require('../config/sqlite');
+    db.prepare('DELETE FROM alert_history WHERE created_at < ?').run(thirtyDaysAgo);
+    queueService.purgeDone();
+    appLogger.info('Cron: nettoyage quotidien effectue');
+  });
+
+  appLogger.info('Cron jobs demarres');
+}
+
+module.exports = { start };

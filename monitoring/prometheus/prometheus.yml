@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: 'api-local-sync'
+    static_configs:
+      - targets: ['api-local:3500']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
