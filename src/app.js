@@ -17,10 +17,17 @@ const { appLogger } = require('./utils/logger');
 const app = express();
 
 // --- Global middlewares ---
+app.use(helmet.xssFilter());
+app.use(helmet.frameguard({ action: "sameorigin" }));
+app.use(helmet.dnsPrefetchControl());
+app.use(helmet.referrerPolicy({ policy: "same-origin" }));
+app.use(helmet.hsts());
+app.use(helmet.noSniff());
 app.use(helmet());
+app.use(helmet.contentSecurityPolicy({ directives: { defaultSrc: ["'self'"] } }));
 app.use(cors({ origin: config.cors.origins }));
 app.use(express.json({ limit: '10mb' }));
-app.use(morgan('combined', {
+app.use(morgan('dev', {
   stream: { write: (msg) => appLogger.info(msg.trim()) },
 }));
 app.use(metricsMiddleware);

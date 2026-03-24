@@ -7,7 +7,7 @@ RUN corepack enable && pnpm install --frozen-lockfile --prod
 
 COPY src/ ./src/
 
-RUN mkdir -p /app/data /app/logs
+RUN mkdir -p /app/data /app/logs && chown -R node:node /app/data /app/logs
 
 EXPOSE 3500
 

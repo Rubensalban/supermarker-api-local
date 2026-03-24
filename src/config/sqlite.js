@@ -10,7 +10,12 @@ if (!fs.existsSync(dataDir)) {
 const dbPath = path.join(dataDir, 'queue.sqlite');
 const db = new Database(dbPath);
 
-db.pragma('journal_mode = WAL');
+// WAL peut échouer sur certains volumes externes — fallback sur DELETE
+try {
+  db.pragma('journal_mode = WAL');
+} catch {
+  db.pragma('journal_mode = DELETE');
+}
 db.pragma('busy_timeout = 5000');
 
 db.exec(`
