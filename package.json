@@ -1,32 +1,32 @@
 {
-  "name": "API-LOCAL",
+  "name": "api-local",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "API de synchronisation Sage Bijou (SQL Server) vers API-VPS",
+  "main": "src/app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "Ruben's Alban",
   "license": "ISC",
   "packageManager": "pnpm@10.6.5",
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "better-queue": "^3.8.12",
-    "better-queue-sql": "^1.0.6",
+    "axios": "^1.7.9",
+    "better-sqlite3": "^11.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "mssql": "^12.2.1",
     "node-cron": "^4.2.1",
-    "pg": "^8.20.0",
-    "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.8",
-    "tedious": "^19.2.1",
+    "prom-client": "^15.1.3",
     "uuid": "^13.0.0",
-    "winston": "^3.19.0"
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   }
 }
