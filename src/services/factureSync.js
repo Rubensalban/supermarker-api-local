@@ -20,14 +20,18 @@ async function getChangedFactures(since) {
 
   const pieces = entetes.recordset.map(r => r.DO_Piece);
 
-  // Lignes pour ces factures
-  const lignesResult = await pool.request().query(`
+  // Lignes pour ces factures (paramètres nommés pour éviter l'injection SQL)
+  const request = pool.request();
+  pieces.forEach((piece, i) => request.input(`piece${i}`, piece));
+  const placeholders = pieces.map((_, i) => `@piece${i}`).join(',');
+
+  const lignesResult = await request.query(`
     SELECT DO_Domaine, DO_Type, DO_Piece, DL_Ligne, AR_Ref,
            DL_Design, DL_Qte, DL_PrixUnitaire, DL_MontantHT,
            DL_MontantTTC, cbModification
     FROM F_DOCLIGNE
     WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
-      AND DO_Piece IN (${pieces.map((_, i) => `'${pieces[i].replace(/'/g, "''")}'`).join(',')})
+      AND DO_Piece IN (${placeholders})
     ORDER BY DO_Piece, DL_Ligne
   `);
 

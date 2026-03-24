@@ -14,26 +14,26 @@ L'API-LOCAL tourne sur le **meme serveur** que SQL Server. Elle detecte les chan
 ┌──────────────────────────────────────────────────────────────────┐
 │                        SERVEUR LOCAL (Docker)                    │
 │                                                                  │
-│  ┌──────────────┐     ┌──────────────────────────────────────┐  │
-│  │  Sage Bijou   │     │          Docker Compose              │  │
-│  │  SQL Server   │     │                                      │  │
-│  │  (source)     │     │  ┌────────────────────────────────┐  │  │
-│  └──────┬───────┘     │  │  api-local (Node.js :3500)     │  │  │
+│  ┌──────────────┐      ┌──────────────────────────────────────┐  │
+│  │  Sage Bijou  │      │          Docker Compose              │  │
+│  │  SQL Server  │      │                                      │  │
+│  │  (source)    │      │  ┌────────────────────────────────┐  │  │
+│  └──────┬───────┘      │  │  api-local (Node.js :3500)     │  │  │
 │          │             │  │  ┌─────────┐  ┌──────────┐     │  │  │
 │          └────────────>│  │  │  CRON   │  │  QUEUE   │     │  │  │
 │                        │  │  │ (detect)│  │ (offline)│     │  │  │
 │                        │  │  └────┬────┘  └─────┬────┘     │  │  │
-│                        │  │       │     /metrics │          │  │  │
+│                        │  │       │     /metrics │         │  │  │
 │                        │  └───────┼──────┬──────┼──────────┘  │  │
 │                        │          │      │      │             │  │
 │                        │  ┌───────┼──────▼──────┼──────────┐  │  │
-│                        │  │  prometheus (:9090)             │  │  │
-│                        │  │  scrape /metrics toutes les 15s │  │  │
+│                        │  │  prometheus (:9090)            │  │  │
+│                        │  │  scrape /metrics toutes les 15s│  │  │
 │                        │  └───────┼──────┬─────────────────┘  │  │
-│                        │          │      │                     │  │
+│                        │          │      │                    │  │
 │                        │  ┌───────┼──────▼─────────────────┐  │  │
 │                        │  │  grafana (:3000)               │  │  │
-│                        │  │  dashboards de monitoring       │  │  │
+│                        │  │  dashboards de monitoring      │  │  │
 │                        │  └────────────────────────────────┘  │  │
 │                        └──────────────────────────────────────┘  │
 │                                   │                              │
@@ -42,15 +42,15 @@ L'API-LOCAL tourne sur le **meme serveur** que SQL Server. Elle detecte les chan
                              ───────┼────── INTERNET (HTTPS)
                                     │
                            ┌────────▼──────────────────────────┐
-                           │        VPS DISTANT                 │
-                           │                                    │
+                           │        VPS DISTANT                │
+                           │                                   │
                            │  ┌──────────────┐  ┌───────────┐  │
-                           │  │   API-VPS     │  │PostgreSQL │  │
-                           │  │  (reception)  │─>│  (cible)  │  │
+                           │  │   API-VPS    │  │PostgreSQL │  │
+                           │  │  (reception) │─>│  (cible)  │  │
                            │  └──────────────┘  └───────────┘  │
-                           │        ↑                           │
-                           │   Apps Mobile / Web                │
-                           └────────────────────────────────────┘
+                           │        ↑                          │
+                           │   Apps Mobile / Web               │
+                           └───────────────────────────────────┘
 ```
 
 ### Pourquoi cette architecture ?
@@ -192,20 +192,20 @@ API-LOCAL **ne connait pas PostgreSQL**. Elle envoie des payloads JSON a l'API-V
 Les echanges entre API-LOCAL et API-VPS sont **strictement verrouilles** :
 
 ```
-┌──────────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────────────┐
 │            Securite inter-API (3 couches)             │
 │                                                       │
-│  1. HTTPS obligatoire                                │
-│     → Chiffrement TLS en transit                     │
+│  1. HTTPS obligatoire                                 │
+│     → Chiffrement TLS en transit                      │
 │                                                       │
-│  2. x-api-key (cle partagee)                         │
-│     → Seul API-LOCAL possede la cle                  │
-│     → API-VPS rejette toute requete sans cle valide  │
+│  2. x-api-key (cle partagee)                          │
+│     → Seul API-LOCAL possede la cle                   │
+│     → API-VPS rejette toute requete sans cle valide   │
 │                                                       │
-│  3. IP Whitelist (recommande)                        │
-│     → API-VPS n'accepte les appels sync que depuis   │
-│       l'IP fixe du serveur local                     │
-└──────────────────────────────────────────────────────┘
+│  3. IP Whitelist (recommande)                         │
+│     → API-VPS n'accepte les appels sync que depuis    │
+│       l'IP fixe du serveur local                      │
+└───────────────────────────────────────────────────────┘
 ```
 
 | Couche                | Implementation                                                    |
@@ -341,20 +341,20 @@ L'API-VPS est sur un serveur **distant**. En cas de coupure internet, l'API-LOCA
 ### 5.2. Solution : File d'attente locale SQLite
 
 ```
-┌────────────────────────────────────────────────────┐
-│              Cycle de synchronisation               │
-│                                                     │
-│  1. Lire changements SQL Server                    │
-│  2. Mapper en JSON (payload)                       │
-│  3. API-VPS accessible ?                           │
-│     ├─ OUI → POST vers API-VPS                    │
-│     └─ NON → Stocker le payload dans Queue (SQLite)│
-│                                                     │
-│  4. Quand connexion retablie :                     │
-│     → Depiler la queue dans l'ordre                │
-│     → Envoyer les payloads vers API-VPS            │
-│     → Marquer comme traites                        │
-└────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│              Cycle de synchronisation                │
+│                                                      │
+│  1. Lire changements SQL Server                      │
+│  2. Mapper en JSON (payload)                         │
+│  3. API-VPS accessible ?                             │
+│     ├─ OUI → POST vers API-VPS                       │
+│     └─ NON → Stocker le payload dans Queue (SQLite)  │
+│                                                      │
+│  4. Quand connexion retablie :                       │
+│     → Depiler la queue dans l'ordre                  │
+│     → Envoyer les payloads vers API-VPS              │
+│     → Marquer comme traites                          │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### 5.3. Table de queue locale — `sync_queue` (SQLite)
@@ -488,17 +488,17 @@ Le systeme d'alertes surveille les evenements critiques et ecrit les alertes dan
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                  ALERT SERVICE                        │
-│                                                       │
+│                  ALERT SERVICE                       │
+│                                                      │
 │  Regles evaluees toutes les minutes :                │
-│                                                       │
+│                                                      │
 │  ┌─────────────────┐    ┌──────────────────────────┐ │
 │  │ Sync echouee    │    │                          │ │
 │  │ Queue > seuil   │───>│  Winston Alert Logger    │ │
 │  │ API-VPS down    │    │  → logs/alerts.log       │ │
 │  │ Retry epuises   │    │  → logs/alerts-error.log │ │
 │  └─────────────────┘    │  → console (dev)         │ │
-│                          └──────────────────────────┘ │
+│                         └──────────────────────────┘ │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -573,20 +573,20 @@ Toute la stack de monitoring tourne dans **Docker Compose** aux cotes de l'API. 
 
 ```
 ┌─────────────────────── Docker Compose ───────────────────────┐
-│                                                               │
+│                                                              │
 │  ┌─────────────────┐  scrape :3500/metrics  ┌─────────────┐  │
-│  │   api-local     │◄──────────────────────│  prometheus  │  │
+│  │   api-local     │◄───────────────────────│  prometheus │  │
 │  │   (Node.js)     │    toutes les 15s      │  (:9090)    │  │
 │  │   :3500         │                        └──────┬──────┘  │
 │  └─────────────────┘                               │         │
 │                                              datasource      │
 │                                                    │         │
 │                                             ┌──────▼──────┐  │
-│                                             │   grafana    │  │
-│                                             │   (:3000)    │  │
-│                                             │  dashboards  │  │
+│                                             │   grafana   │  │
+│                                             │   (:3000)   │  │
+│                                             │  dashboards │  │
 │                                             └─────────────┘  │
-└───────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### 10.2. Containers Docker
@@ -1175,7 +1175,7 @@ CORS_ORIGINS=http://localhost:3000
 
 ## 16. Dependances du projet
 
-| Package                       | Role                                           |
+| Package                       | Role                                            |
 |-------------------------------|-------------------------------------------------|
 | `express`                     | Framework HTTP                                  |
 | `mssql`                       | Client SQL Server (requetes directes vers Sage) |
