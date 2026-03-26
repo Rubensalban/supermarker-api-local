@@ -23,14 +23,13 @@ services:
       retries: 3
 
   prometheus:
-    image: prom/prometheus:latest
+    build:
+      context: ./monitoring/prometheus
     container_name: prometheus
     restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -42,7 +41,8 @@ services:
       - api-local
 
   grafana:
-    image: grafana/grafana:latest
+    build:
+      context: ./monitoring/grafana
     container_name: grafana
     restart: unless-stopped
     ports:
@@ -53,8 +53,6 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - monitoring
     depends_on:

@@ -1,93 +1,124 @@
 {
-  "dashboard": {
-    "title": "API-LOCAL — Queue & Infrastructure",
-    "uid": "api-local-infra",
-    "tags": ["api-local", "queue", "infra"],
-    "timezone": "browser",
-    "refresh": "15s",
-    "panels": [
-      {
-        "title": "Queue : elements en attente",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
-        "targets": [{ "expr": "queue_size{status=\"PENDING\"}", "legendFormat": "PENDING" }]
-      },
-      {
-        "title": "Queue : elements echoues",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
-        "targets": [{ "expr": "queue_size{status=\"FAILED\"}", "legendFormat": "FAILED" }]
-      },
-      {
-        "title": "Queue : age du plus ancien",
-        "type": "stat",
-        "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
-        "targets": [{ "expr": "queue_oldest_pending_seconds", "legendFormat": "Secondes" }],
-        "fieldConfig": { "defaults": { "unit": "s" } }
-      },
-      {
-        "title": "Queue : debit traitement",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
-        "targets": [
-          { "expr": "rate(queue_processed_total{status=\"DONE\"}[5m])", "legendFormat": "DONE/s" },
-          { "expr": "rate(queue_processed_total{status=\"FAILED\"}[5m])", "legendFormat": "FAILED/s" }
-        ]
-      },
-      {
-        "title": "Queue : duree traitement P95",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
-        "targets": [{ "expr": "histogram_quantile(0.95, rate(queue_processing_duration_seconds_bucket[5m]))", "legendFormat": "P95" }]
-      },
-      {
-        "title": "Latence SQL Server",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
-        "targets": [{ "expr": "histogram_quantile(0.95, rate(db_connection_latency_seconds_bucket{database=\"sqlserver\"}[5m]))", "legendFormat": "P95" }]
-      },
-      {
-        "title": "Latence API-VPS",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
-        "targets": [{ "expr": "histogram_quantile(0.95, rate(db_connection_latency_seconds_bucket{database=\"api-vps\"}[5m]))", "legendFormat": "P95" }]
-      },
-      {
-        "title": "CPU container",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
-        "targets": [{ "expr": "rate(process_cpu_seconds_total[5m])", "legendFormat": "CPU" }]
-      },
-      {
-        "title": "Memoire (RSS)",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 8, "x": 8, "y": 18 },
-        "targets": [{ "expr": "process_resident_memory_bytes", "legendFormat": "RSS" }],
-        "fieldConfig": { "defaults": { "unit": "bytes" } }
-      },
-      {
-        "title": "Event loop lag",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 8, "x": 16, "y": 18 },
-        "targets": [{ "expr": "nodejs_eventloop_lag_seconds", "legendFormat": "Lag" }],
-        "fieldConfig": { "defaults": { "unit": "s" } }
-      },
-      {
-        "title": "Heap Node.js",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 24 },
-        "targets": [
-          { "expr": "nodejs_heap_size_used_bytes", "legendFormat": "Used" },
-          { "expr": "nodejs_heap_size_total_bytes", "legendFormat": "Total" }
-        ],
-        "fieldConfig": { "defaults": { "unit": "bytes" } }
-      },
-      {
-        "title": "Requetes HTTP / min",
-        "type": "timeseries",
-        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 24 },
-        "targets": [{ "expr": "rate(http_requests_total[1m])", "legendFormat": "{{ method }} {{ route }} {{ status }}" }]
-      }
-    ]
-  }
+  "title": "API-LOCAL — Queue & Infrastructure",
+  "uid": "api-local-infra",
+  "tags": ["api-local", "queue", "infra"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Queue : elements en attente",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "queue_size{status=\"PENDING\"}", "legendFormat": "PENDING", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "title": "Queue : elements echoues",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "queue_size{status=\"FAILED\"}", "legendFormat": "FAILED", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "title": "Queue : age du plus ancien",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "queue_oldest_pending_seconds", "legendFormat": "Secondes", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "Queue : debit traitement",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(queue_processed_total{status=\"DONE\"}[5m])", "legendFormat": "DONE/s", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(queue_processed_total{status=\"FAILED\"}[5m])", "legendFormat": "FAILED/s", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Queue : duree traitement P95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
+      "targets": [{ "expr": "histogram_quantile(0.95, rate(queue_processing_duration_seconds_bucket[5m]))", "legendFormat": "P95", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "title": "Latence SQL Server",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.95, rate(db_connection_latency_seconds_bucket{database=\"sqlserver\"}[5m]))", "legendFormat": "P95", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "title": "Latence API-VPS",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.95, rate(db_connection_latency_seconds_bucket{database=\"api-vps\"}[5m]))", "legendFormat": "P95", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "title": "CPU container",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
+      "targets": [{ "expr": "rate(process_cpu_seconds_total[5m])", "legendFormat": "CPU", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 9,
+      "title": "Memoire (RSS)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 18 },
+      "targets": [{ "expr": "process_resident_memory_bytes", "legendFormat": "RSS", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 10,
+      "title": "Event loop lag",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 18 },
+      "targets": [{ "expr": "nodejs_eventloop_lag_seconds", "legendFormat": "Lag", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 11,
+      "title": "Heap Node.js",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "nodejs_heap_size_used_bytes", "legendFormat": "Used", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "nodejs_heap_size_total_bytes", "legendFormat": "Total", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 12,
+      "title": "Requetes HTTP / min",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 24 },
+      "targets": [{ "expr": "rate(http_requests_total[1m])", "legendFormat": "{{ method }} {{ route }} {{ status }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ]
 }

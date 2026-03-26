@@ -34,8 +34,11 @@ app.use(metricsMiddleware);
 
 // --- Metrics endpoint (sans auth, filtre IP) ---
 app.get('/metrics', (req, res) => {
-  const clientIp = req.ip;
-  if (!config.metrics.allowedIps.some(ip => clientIp.includes(ip))) {
+  const clientIp = req.ip || '';
+  const isAllowed = config.metrics.allowedIps.some(ip => clientIp.includes(ip))
+    || clientIp.startsWith('172.') || clientIp.startsWith('10.')
+    || clientIp.startsWith('192.168.') || clientIp === '::ffff:127.0.0.1';
+  if (!isAllowed) {
     return res.status(403).json({ error: 'IP non autorisee' });
   }
   res.set('Content-Type', promClient.register.contentType);
@@ -51,15 +54,16 @@ app.use(errorHandler);
 // --- Start ---
 const PORT = config.port;
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   appLogger.info(`API-LOCAL demarree sur le port ${PORT}`);
 
-  // Healthcheck initial
-  const status = await healthService.checkAll();
-  appLogger.info('Healthcheck initial', status);
-
-  // Demarrer les cron jobs
+  // Demarrer les cron jobs immediatement (ne pas bloquer sur le healthcheck)
   cronService.start();
+
+  // Healthcheck initial en arriere-plan
+  healthService.checkAll()
+    .then(status => appLogger.info('Healthcheck initial', status))
+    .catch(err => appLogger.error('Healthcheck initial echoue', { error: err.message }));
 });
 
 module.exports = app;

@@ -1,78 +1,98 @@
 {
-  "dashboard": {
-    "title": "API-LOCAL — Vue d'ensemble",
-    "uid": "api-local-overview",
-    "tags": ["api-local", "sync"],
-    "timezone": "browser",
-    "refresh": "30s",
-    "panels": [
-      {
-        "title": "Statut API-VPS",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
-        "targets": [{ "expr": "vps_connection_up", "legendFormat": "VPS" }],
-        "fieldConfig": {
-          "defaults": {
-            "mappings": [
-              { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
-            ]
-          }
-        }
-      },
-      {
-        "title": "Statut SQL Server",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
-        "targets": [{ "expr": "db_connection_up{database=\"sqlserver\"}", "legendFormat": "SQL Server" }],
-        "fieldConfig": {
-          "defaults": {
-            "mappings": [
-              { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
-            ]
-          }
-        }
-      },
-      {
-        "title": "Records envoyes (24h)",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
-        "targets": [{ "expr": "increase(vps_records_sent_total[24h])", "legendFormat": "{{ entity }}" }]
-      },
-      {
-        "title": "Alertes actives",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
-        "targets": [{ "expr": "sum(alerts_active)", "legendFormat": "Total" }]
-      },
-      {
-        "title": "Queue PENDING",
-        "type": "gauge",
-        "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
-        "targets": [{ "expr": "queue_size{status=\"PENDING\"}", "legendFormat": "Pending" }],
-        "fieldConfig": {
-          "defaults": {
-            "thresholds": {
-              "steps": [
-                { "value": 0, "color": "green" },
-                { "value": 1000, "color": "yellow" },
-                { "value": 5000, "color": "red" }
-              ]
-            }
-          }
-        }
-      },
-      {
-        "title": "Cycles de sync / heure",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-        "targets": [{ "expr": "rate(sync_cycles_total[1h])", "legendFormat": "{{ entity }} {{ type }} {{ status }}" }]
-      },
-      {
-        "title": "Taux d'erreurs",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-        "targets": [{ "expr": "rate(sync_errors_total[5m])", "legendFormat": "{{ entity }} {{ error_type }}" }]
+  "title": "API-LOCAL — Vue d'ensemble",
+  "uid": "api-local-overview",
+  "tags": ["api-local", "sync"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Statut API-VPS",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "vps_connection_up", "legendFormat": "VPS", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        },
+        "overrides": []
       }
-    ]
-  }
+    },
+    {
+      "id": 2,
+      "title": "Statut SQL Server",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "db_connection_up{database=\"sqlserver\"}", "legendFormat": "SQL Server", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Records envoyes (24h)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [{ "expr": "increase(vps_records_sent_total[24h])", "legendFormat": "{{ entity }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "Alertes actives",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(alerts_active)", "legendFormat": "Total", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Queue PENDING",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "queue_size{status=\"PENDING\"}", "legendFormat": "Pending", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 1000, "color": "yellow" },
+              { "value": 5000, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Cycles de sync / heure",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "rate(sync_cycles_total[1h])", "legendFormat": "{{ entity }} {{ type }} {{ status }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "title": "Taux d'erreurs",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "rate(sync_errors_total[5m])", "legendFormat": "{{ entity }} {{ error_type }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ]
 }

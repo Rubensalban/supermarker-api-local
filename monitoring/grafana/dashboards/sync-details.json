@@ -1,61 +1,81 @@
 {
-  "dashboard": {
-    "title": "API-LOCAL — Sync & API-VPS",
-    "uid": "api-local-sync",
-    "tags": ["api-local", "sync", "vps"],
-    "timezone": "browser",
-    "refresh": "30s",
-    "panels": [
-      {
-        "title": "Records envoyes par entite",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-        "targets": [{ "expr": "rate(vps_records_sent_total[5m])", "legendFormat": "{{ entity }}" }]
-      },
-      {
-        "title": "Records rejetes par entite",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-        "targets": [{ "expr": "rate(vps_records_rejected_total[5m])", "legendFormat": "{{ entity }}" }]
-      },
-      {
-        "title": "Latence API-VPS P50/P95/P99",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-        "targets": [
-          { "expr": "histogram_quantile(0.5, rate(vps_request_duration_seconds_bucket[5m]))", "legendFormat": "P50" },
-          { "expr": "histogram_quantile(0.95, rate(vps_request_duration_seconds_bucket[5m]))", "legendFormat": "P95" },
-          { "expr": "histogram_quantile(0.99, rate(vps_request_duration_seconds_bucket[5m]))", "legendFormat": "P99" }
-        ]
-      },
-      {
-        "title": "Duree sync P50/P95/P99",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-        "targets": [
-          { "expr": "histogram_quantile(0.5, rate(sync_cycle_duration_seconds_bucket[5m]))", "legendFormat": "P50" },
-          { "expr": "histogram_quantile(0.95, rate(sync_cycle_duration_seconds_bucket[5m]))", "legendFormat": "P95" },
-          { "expr": "histogram_quantile(0.99, rate(sync_cycle_duration_seconds_bucket[5m]))", "legendFormat": "P99" }
-        ]
-      },
-      {
-        "title": "Appels API-VPS par status HTTP",
-        "type": "piechart",
-        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
-        "targets": [{ "expr": "increase(vps_requests_total[24h])", "legendFormat": "{{ status }}" }]
-      },
-      {
-        "title": "Erreurs par entite (1h)",
-        "type": "bargauge",
-        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
-        "targets": [{ "expr": "increase(sync_errors_total[1h])", "legendFormat": "{{ entity }}" }]
-      },
-      {
-        "title": "Derniere sync par entite",
-        "type": "table",
-        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
-        "targets": [{ "expr": "sync_last_success_timestamp", "legendFormat": "{{ entity }} {{ type }}", "format": "table", "instant": true }]
-      }
-    ]
-  }
+  "title": "API-LOCAL — Sync & API-VPS",
+  "uid": "api-local-sync",
+  "tags": ["api-local", "sync", "vps"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Records envoyes par entite",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "rate(vps_records_sent_total[5m])", "legendFormat": "{{ entity }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "title": "Records rejetes par entite",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "rate(vps_records_rejected_total[5m])", "legendFormat": "{{ entity }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "title": "Latence API-VPS P50/P95/P99",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(vps_request_duration_seconds_bucket[5m]))", "legendFormat": "P50", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, rate(vps_request_duration_seconds_bucket[5m]))", "legendFormat": "P95", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.99, rate(vps_request_duration_seconds_bucket[5m]))", "legendFormat": "P99", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "Duree sync P50/P95/P99",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(sync_cycle_duration_seconds_bucket[5m]))", "legendFormat": "P50", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, rate(sync_cycle_duration_seconds_bucket[5m]))", "legendFormat": "P95", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.99, rate(sync_cycle_duration_seconds_bucket[5m]))", "legendFormat": "P99", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Appels API-VPS par status HTTP",
+      "type": "piechart",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "targets": [{ "expr": "increase(vps_requests_total[24h])", "legendFormat": "{{ status }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "title": "Erreurs par entite (1h)",
+      "type": "bargauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "targets": [{ "expr": "increase(sync_errors_total[1h])", "legendFormat": "{{ entity }}", "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "title": "Derniere sync par entite",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "targets": [{ "expr": "sync_last_success_timestamp", "legendFormat": "{{ entity }} {{ type }}", "format": "table", "instant": true, "datasource": { "type": "prometheus", "uid": "prometheus" } }],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ]
 }
