@@ -8,3 +8,17 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: prometheus
+          matcherRegex: "batchId.*?(\\w{8}-\\w{4}-\\w{4}-\\w{4}-\\w{12})"
+          name: batch_id
+          url: ""

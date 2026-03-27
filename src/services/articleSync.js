@@ -7,8 +7,8 @@ async function getChangedArticles(since) {
     .input('lastSync', since)
     .query(`
       SELECT AR_Ref, AR_Design, FA_CodeFamille, AR_Raccourci,
-             AR_PrixAch, AR_PrixVen, AR_UnitePoids, AR_Poids,
-             AR_Sommeil, AR_Suivi, AR_Publie, cbModification
+             AR_PrixAch, AR_PrixVen, AR_UnitePoids, AR_PoidsNet,
+             AR_Sommeil, AR_SuiviStock, AR_Publie, cbModification
       FROM F_ARTICLE
       WHERE cbModification > @lastSync
       ORDER BY cbModification ASC

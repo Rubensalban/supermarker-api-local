@@ -1,0 +1,229 @@
+{
+  "title": "API-LOCAL — Logs & Requetes temps reel",
+  "uid": "api-local-logs",
+  "tags": ["api-local", "logs", "sync"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "entity",
+        "type": "custom",
+        "current": { "text": "All", "value": "$__all" },
+        "options": [
+          { "text": "All", "value": "$__all", "selected": true },
+          { "text": "client", "value": "client", "selected": false },
+          { "text": "article", "value": "article", "selected": false },
+          { "text": "facture", "value": "facture", "selected": false },
+          { "text": "reglement", "value": "reglement", "selected": false }
+        ],
+        "includeAll": true,
+        "multi": true,
+        "query": "client,article,facture,reglement"
+      },
+      {
+        "name": "level",
+        "type": "custom",
+        "current": { "text": "All", "value": "$__all" },
+        "options": [
+          { "text": "All", "value": "$__all", "selected": true },
+          { "text": "error", "value": "error", "selected": false },
+          { "text": "warn", "value": "warn", "selected": false },
+          { "text": "info", "value": "info", "selected": false }
+        ],
+        "includeAll": true,
+        "multi": true,
+        "query": "error,warn,info"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Requetes sync en temps reel (API-LOCAL → API-ONLINE)",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "{source=\"sync\"} |= `` | json | entity =~ `$entity`",
+          "legendFormat": "",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Erreurs (tous les logs)",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "expr": "{job=\"api-local\"} |= `` | json | level =~ `error|warn` | entity =~ `$entity`",
+          "legendFormat": "",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Alertes actives",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "{source=\"alerts\"} |= `` | json | level =~ `$level`",
+          "legendFormat": "",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Volume de logs par source (rate/min)",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "sum(rate({job=\"api-local\"}[1m])) by (source)",
+          "legendFormat": "{{source}}",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 30, "stacking": { "mode": "normal" } },
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Taux d'erreurs par entite (rate/min)",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        {
+          "expr": "sum(rate({source=\"sync\"} |= `error` | json [1m])) by (entity)",
+          "legendFormat": "{{entity}}",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Requetes HTTP (access logs)",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "expr": "{source=\"access\"} |= ``",
+          "legendFormat": "",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": false,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Requetes VPS — Latence (Prometheus)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 42 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(vps_request_duration_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "P95 {{endpoint}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(vps_request_duration_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "P50 {{endpoint}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 5 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Requetes VPS — Status HTTP (Prometheus)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 42 },
+      "targets": [
+        {
+          "expr": "sum(rate(vps_requests_total[5m])) by (endpoint, status)",
+          "legendFormat": "{{endpoint}} [{{status}}]",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "bars", "fillOpacity": 30, "stacking": { "mode": "normal" } }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

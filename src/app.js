@@ -12,7 +12,7 @@ const routes = require('./routes');
 const { client: promClient } = require('./config/prometheus');
 const cronService = require('./services/cronService');
 const healthService = require('./services/healthService');
-const { appLogger } = require('./utils/logger');
+const { appLogger, accessLogStream } = require('./utils/logger');
 
 const app = express();
 
@@ -27,9 +27,7 @@ app.use(helmet());
 app.use(helmet.contentSecurityPolicy({ directives: { defaultSrc: ["'self'"] } }));
 app.use(cors({ origin: config.cors.origins }));
 app.use(express.json({ limit: '10mb' }));
-app.use(morgan('dev', {
-  stream: { write: (msg) => appLogger.info(msg.trim()) },
-}));
+app.use(morgan('combined', { stream: accessLogStream }));
 app.use(metricsMiddleware);
 
 // --- Metrics endpoint (sans auth, filtre IP) ---

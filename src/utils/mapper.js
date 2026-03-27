@@ -43,9 +43,9 @@ function mapArticle(row) {
       ar_prix_ach: row.AR_PrixAch,
       ar_prix_ven: row.AR_PrixVen,
       ar_unite_poids: row.AR_UnitePoids,
-      ar_poids: row.AR_Poids,
+      ar_poids: row.AR_PoidsNet,
       ar_sommeil: row.AR_Sommeil,
-      ar_suivi: row.AR_Suivi,
+      ar_suivi: row.AR_SuiviStock,
       ar_publie: row.AR_Publie,
     },
   };
@@ -103,9 +103,6 @@ function mapReglement(row) {
       n_reglement: row.N_Reglement,
       rg_impute: row.RG_Impute,
       rg_compta: row.RG_Compta,
-      do_piece: row.DO_Piece,
-      do_domaine: row.DO_Domaine,
-      do_type: row.DO_Type,
     },
   };
 }

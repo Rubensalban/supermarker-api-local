@@ -8,6 +8,9 @@ if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
+// Stream fichier pour les access logs HTTP (format Apache Combined, lu par Promtail)
+const accessLogStream = fs.createWriteStream(path.join(logsDir, 'access.log'), { flags: 'a' });
+
 const logFormat = winston.format.combine(
   winston.format.timestamp(),
   winston.format.json()
@@ -78,4 +81,4 @@ if (process.env.NODE_ENV !== 'production') {
   alertLogger.add(consoleTransport);
 }
 
-module.exports = { appLogger, syncLogger, alertLogger };
+module.exports = { appLogger, syncLogger, alertLogger, accessLogStream };

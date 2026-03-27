@@ -8,7 +8,7 @@ async function getChangedReglements(since) {
     .query(`
       SELECT RG_No, CT_NumPayeur, RG_Date, RG_Reference, RG_Montant,
              RG_MontantDev, N_Reglement, RG_Impute, RG_Compta,
-             DO_Piece, DO_Domaine, DO_Type, cbModification
+             cbModification
       FROM F_CREGLEMENT
       WHERE cbModification > @lastSync
       ORDER BY cbModification ASC

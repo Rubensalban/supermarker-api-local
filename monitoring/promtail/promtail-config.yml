@@ -1,0 +1,110 @@
+server:
+  http_listen_port: 9080
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Logs applicatifs generaux
+  - job_name: api-local-app
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: api-local
+          source: app
+          __path__: /var/log/api-local/app-*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            entity: entity
+            error: error
+      - labels:
+          level:
+          entity:
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05.000Z"
+          fallback_formats:
+            - "2006-01-02T15:04:05.999Z07:00"
+
+  # Logs de synchronisation (requetes API-LOCAL → API-ONLINE)
+  - job_name: api-local-sync
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: api-local
+          source: sync
+          __path__: /var/log/api-local/sync-*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            entity: entity
+            batchId: batchId
+            operation: operation
+            processed: processed
+            errors: errors
+            error: error
+            status: status
+            endpoint: endpoint
+      - labels:
+          level:
+          entity:
+          operation:
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05.000Z"
+          fallback_formats:
+            - "2006-01-02T15:04:05.999Z07:00"
+
+  # Logs d'alertes
+  - job_name: api-local-alerts
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: api-local
+          source: alerts
+          __path__: /var/log/api-local/alerts-*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            rule: rule
+      - labels:
+          level:
+          rule:
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05.000Z"
+          fallback_formats:
+            - "2006-01-02T15:04:05.999Z07:00"
+
+  # Logs d'acces HTTP (morgan combined)
+  - job_name: api-local-access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: api-local
+          source: access
+          __path__: /var/log/api-local/access.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<remote_addr>[\S]+) - (?P<remote_user>[\S]+) \[(?P<time_local>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>\S+)" (?P<status>\d+) (?P<body_bytes_sent>\d+|-) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)"'
+      - labels:
+          method:
+          path:
+          status:
