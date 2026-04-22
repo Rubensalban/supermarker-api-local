@@ -69,16 +69,15 @@ const alertLogger = winston.createLogger({
   ],
 });
 
-if (process.env.NODE_ENV !== 'production') {
-  const consoleTransport = new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    ),
-  });
-  appLogger.add(consoleTransport);
-  syncLogger.add(consoleTransport);
-  alertLogger.add(consoleTransport);
-}
+// Toujours afficher les logs en console (compatible pm2, nodemon, docker)
+const consoleTransport = new winston.transports.Console({
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.simple()
+  ),
+});
+appLogger.add(consoleTransport);
+syncLogger.add(consoleTransport);
+alertLogger.add(consoleTransport);
 
 module.exports = { appLogger, syncLogger, alertLogger, accessLogStream };
