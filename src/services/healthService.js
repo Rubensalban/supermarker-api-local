@@ -1,10 +1,16 @@
 const { testConnection } = require('../config/database');
 const vpsService = require('./vpsService');
 const metrics = require('../config/prometheus');
+const config = require('../config/env');
 const { appLogger } = require('../utils/logger');
 
 let vpsUp = false;
 let sqlServerUp = false;
+
+// Backoff: skip des checks quand le VPS est down depuis longtemps
+// (evite de marteler un reseau lent / VPS injoignable)
+let vpsDownStreak = 0;
+let nextVpsCheckAt = 0;
 
 async function checkSqlServer() {
   const start = process.hrtime.bigint();
@@ -31,6 +37,11 @@ async function checkSqlServer() {
 }
 
 async function checkVps() {
+  // Backoff: si VPS down, espacer les checks (30s -> 60s -> 120s -> ... -> max)
+  if (Date.now() < nextVpsCheckAt) {
+    return vpsUp;
+  }
+
   const start = process.hrtime.bigint();
   try {
     const ok = await vpsService.checkHealth();
@@ -44,11 +55,26 @@ async function checkVps() {
     if (ok && !vpsUp) {
       appLogger.info('API-VPS de nouveau accessible');
     }
+
+    if (ok) {
+      vpsDownStreak = 0;
+      nextVpsCheckAt = 0;
+    } else {
+      vpsDownStreak++;
+      const base = config.sync.healthcheckInterval;
+      const backoff = Math.min(base * Math.pow(2, vpsDownStreak - 1), config.sync.healthcheckBackoffMax);
+      nextVpsCheckAt = Date.now() + backoff * 1000;
+    }
+
     vpsUp = ok;
     return ok;
   } catch {
     metrics.vpsConnectionUp.set(0);
     vpsUp = false;
+    vpsDownStreak++;
+    const base = config.sync.healthcheckInterval;
+    const backoff = Math.min(base * Math.pow(2, vpsDownStreak - 1), config.sync.healthcheckBackoffMax);
+    nextVpsCheckAt = Date.now() + backoff * 1000;
     return false;
   }
 }

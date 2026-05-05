@@ -37,15 +37,23 @@ module.exports = {
     apiKey: process.env.SYNC_API_KEY,
     hmacSecret: process.env.SYNC_HMAC_SECRET || '',
     hmacEnabled: process.env.SYNC_HMAC_ENABLED === 'true',
-    timeout: parseInt(process.env.SYNC_TIMEOUT, 10) || 30000,
-    batchSize: parseInt(process.env.SYNC_BATCH_SIZE, 10) || 100,
+    timeout: parseInt(process.env.SYNC_TIMEOUT, 10) || 60000,
+    batchSize: parseInt(process.env.SYNC_BATCH_SIZE, 10) || 50,
+    retryMax: parseInt(process.env.SYNC_RETRY_MAX, 10) || 3,
+    retryBaseDelay: parseInt(process.env.SYNC_RETRY_BASE_DELAY, 10) || 2000,
   },
 
   sync: {
-    incrementalInterval: parseInt(process.env.SYNC_INCREMENTAL_INTERVAL, 10) || 2,
-    fullInterval: parseInt(process.env.SYNC_FULL_INTERVAL, 10) || 60,
-    queueProcessInterval: parseInt(process.env.QUEUE_PROCESS_INTERVAL, 10) || 30,
-    healthcheckInterval: parseInt(process.env.HEALTHCHECK_INTERVAL, 10) || 30,
+    incrementalInterval: parseInt(process.env.SYNC_INCREMENTAL_INTERVAL, 10) || 5,
+    fullInterval: parseInt(process.env.SYNC_FULL_INTERVAL, 10) || 180,
+    queueProcessInterval: parseInt(process.env.QUEUE_PROCESS_INTERVAL, 10) || 60,
+    healthcheckInterval: parseInt(process.env.HEALTHCHECK_INTERVAL, 10) || 60,
+    healthcheckBackoffMax: parseInt(process.env.HEALTHCHECK_BACKOFF_MAX, 10) || 300,
+  },
+
+  circuitBreaker: {
+    threshold: parseInt(process.env.CIRCUIT_BREAKER_THRESHOLD, 10) || 3,
+    cooldown: parseInt(process.env.CIRCUIT_BREAKER_COOLDOWN, 10) || 300,
   },
 
   alerts: {

@@ -27,6 +27,7 @@ function mapClient(row) {
       ct_ape: row.CT_Ape,
       ct_identifiant: row.CT_Identifiant,
       ct_sommeil: row.CT_Sommeil,
+      ct_commentaire: row.CT_Commentaire,
     },
   };
 }

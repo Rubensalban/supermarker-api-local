@@ -1,5 +1,6 @@
 const config = require('./config/env');
 const express = require('express');
+const path = require('path');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -42,6 +43,32 @@ app.get('/metrics', (req, res) => {
   res.set('Content-Type', promClient.register.contentType);
   promClient.register.metrics().then(data => res.send(data));
 });
+
+// --- UI sync manuelle (page statique, pas d'auth ici — l'auth reste sur /api) ---
+// CSP relachee pour /ui : Tailwind CDN + script/style inline
+const uiCsp = helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.tailwindcss.com'],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+    connectSrc: ["'self'"],
+  },
+});
+
+// Expose la cle API pour la page UI (locale uniquement — meme machine que l'API)
+app.get('/ui/config', uiCsp, (req, res) => {
+  const ip = req.ip || '';
+  const isLocal = ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1'
+    || ip.startsWith('172.') || ip.startsWith('10.') || ip.startsWith('192.168.');
+  if (!isLocal) {
+    return res.status(403).json({ error: 'UI config accessible uniquement en local' });
+  }
+  res.json({ apiKey: config.apiKey });
+});
+
+app.use('/ui', uiCsp, express.static(path.join(__dirname, 'public')));
+//app.get('/', (req, res) => res.redirect('/ui/sync.html'));
 
 // --- API routes (avec auth) ---
 app.use('/api', rateLimiter, apiKeyAuth, routes);
