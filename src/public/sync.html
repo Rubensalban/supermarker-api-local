@@ -40,8 +40,13 @@
       <h1 class="text-base font-semibold tracking-tight">API-LOCAL — Synchronisation</h1>
       <p class="text-xs text-slate-400 mt-0.5" id="hostMeta"></p>
     </div>
-    <div class="flex items-center gap-2 text-xs">
+    <div class="flex items-center gap-2 text-xs flex-wrap">
       <span id="keyState" class="px-2 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300">Clé : chargement…</span>
+      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="Saisir la clé API…"
+        class="px-2 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-slate-500 font-mono w-64" />
+      <button id="keySave" class="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 hover:border-slate-500 text-slate-200 transition">Enregistrer</button>
+      <button id="keyToggle" class="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 hover:border-slate-500 text-slate-300 transition" title="Afficher/Masquer">👁</button>
+      <button id="keyClear" class="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 hover:border-slate-500 text-slate-300 transition" title="Effacer la clé enregistrée">✕</button>
       <span id="connState" class="px-2 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300">Connexion : —</span>
     </div>
   </div>
@@ -160,19 +165,61 @@
     }
   }
 
+  const STORAGE_KEY = 'apiLocal.syncApiKey';
+
+  function applyKey(value, { persist = false } = {}) {
+    apiKey = (value || '').trim();
+    setKeyState(!!apiKey);
+    $('keyInput').value = apiKey;
+    if (persist) {
+      try {
+        if (apiKey) localStorage.setItem(STORAGE_KEY, apiKey);
+        else localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
+  }
+
   async function loadKey() {
+    let stored = '';
+    try { stored = localStorage.getItem(STORAGE_KEY) || ''; } catch {}
+    if (stored) {
+      applyKey(stored);
+      return;
+    }
     try {
       const res = await fetch('/ui/config');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
-      apiKey = data.apiKey || '';
-      setKeyState(!!apiKey);
+      applyKey(data.apiKey || '');
+      if (!apiKey) {
+        $('resultBody').textContent = 'Aucune clé API renvoyée par /ui/config. Saisissez-la manuellement en haut à droite.';
+      }
     } catch (err) {
       setKeyState(false);
       $('resultBody').textContent = 'Impossible de charger la clé API depuis /ui/config : ' + err.message
-        + '\n\nL\'endpoint n\'est accessible que depuis localhost / réseau privé.';
+        + '\n\nSaisissez-la manuellement dans le champ en haut à droite — elle sera mémorisée localement (localStorage).';
     }
   }
+
+  $('keySave').addEventListener('click', () => {
+    applyKey($('keyInput').value, { persist: true });
+    checkConnection();
+  });
+  $('keyInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyKey($('keyInput').value, { persist: true });
+      checkConnection();
+    }
+  });
+  $('keyToggle').addEventListener('click', () => {
+    const inp = $('keyInput');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  });
+  $('keyClear').addEventListener('click', () => {
+    applyKey('', { persist: true });
+    $('connState').textContent = 'Connexion : —';
+  });
 
   function setStatus(state, text) {
     const el = $('resultStatus');
