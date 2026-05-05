@@ -18,14 +18,18 @@ const { appLogger, accessLogStream } = require('./utils/logger');
 const app = express();
 
 // --- Global middlewares ---
-app.use(helmet.xssFilter());
-app.use(helmet.frameguard({ action: "sameorigin" }));
-app.use(helmet.dnsPrefetchControl());
-app.use(helmet.referrerPolicy({ policy: "same-origin" }));
-app.use(helmet.hsts());
-app.use(helmet.noSniff());
-app.use(helmet());
-app.use(helmet.contentSecurityPolicy({ directives: { defaultSrc: ["'self'"] } }));
+// HSTS et upgrade-insecure-requests désactivés : l'API-LOCAL est servie en HTTP
+// sur le LAN. Activer HSTS forçait le navigateur en HTTPS → ERR_SSL_PROTOCOL_ERROR.
+app.use(helmet({
+  hsts: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      upgradeInsecureRequests: null,
+    },
+  },
+}));
 app.use(cors({ origin: config.cors.origins }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined', { stream: accessLogStream }));
@@ -47,12 +51,14 @@ app.get('/metrics', (req, res) => {
 // --- UI sync manuelle (page statique, pas d'auth ici — l'auth reste sur /api) ---
 // CSP relachee pour /ui : Tailwind CDN + script/style inline
 const uiCsp = helmet.contentSecurityPolicy({
+  useDefaults: true,
   directives: {
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.tailwindcss.com'],
     styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
     fontSrc: ["'self'", 'https://fonts.gstatic.com'],
     connectSrc: ["'self'"],
+    upgradeInsecureRequests: null,
   },
 });
 
