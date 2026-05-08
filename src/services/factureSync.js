@@ -1,4 +1,5 @@
 const { getPool } = require('../config/database');
+const config = require('../config/env');
 const { mapFacture, mapFactureLigne } = require('../utils/mapper');
 
 // Sous-requête : ne garder que les factures dont le client (DO_Tiers) est COMMERCIAL
@@ -9,13 +10,21 @@ const COMMERCIAL_TIERS_SUBQUERY = `
   )
 `;
 
+// Filtre optionnel sur la date de pièce Sage (DO_Date), piloté par SYNC_START_DATE.
+function startDateClause(prefix) {
+  return config.sync.startDate ? `AND ${prefix}DO_Date >= @startDate` : '';
+}
+
 async function getChangedFactures(since) {
   const pool = await getPool();
 
-  // En-tetes (filtrees sur clients commerciaux)
-  const entetes = await pool.request()
-    .input('lastSync', since)
-    .query(`
+  // En-tetes (filtrees sur clients commerciaux : DO_Tiers est le CT_Num du commercial,
+  // donc DO_Tiers fait office d'id Sage du commercial sur la facture).
+  const reqEntetes = pool.request()
+    .input('lastSync', since);
+  if (config.sync.startDate) reqEntetes.input('startDate', config.sync.startDate);
+
+  const entetes = await reqEntetes.query(`
       SELECT DO_Domaine, DO_Type, DO_Piece, DO_Date, DO_Ref, DO_Tiers,
              DO_TotalHT, DO_TotalHTNet, DO_TotalTTC, DO_NetAPayer,
              DO_MontantRegle, DO_Statut, cbModification
@@ -23,6 +32,7 @@ async function getChangedFactures(since) {
       WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
         AND ${COMMERCIAL_TIERS_SUBQUERY}
         AND cbModification > @lastSync
+        ${startDateClause('')}
       ORDER BY cbModification ASC
     `);
 
@@ -60,10 +70,13 @@ async function getChangedFactures(since) {
 
 async function getAllFactureIds() {
   const pool = await getPool();
-  const result = await pool.request().query(`
+  const req = pool.request();
+  if (config.sync.startDate) req.input('startDate', config.sync.startDate);
+  const result = await req.query(`
     SELECT DO_Piece FROM F_DOCENTETE
     WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
       AND ${COMMERCIAL_TIERS_SUBQUERY}
+      ${startDateClause('')}
   `);
   return result.recordset.map(row => row.DO_Piece);
 }

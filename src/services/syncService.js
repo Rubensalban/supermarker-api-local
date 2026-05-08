@@ -60,7 +60,12 @@ async function syncIncremental(entityType) {
   if (!conf) throw new Error(`Entite inconnue : ${entityType}`);
 
   const meta = getMeta.get(entityType);
-  const since = meta.last_sync_at || '1970-01-01T00:00:00.000Z';
+  // Borne basse : SYNC_START_DATE (si définie) prime sur 1970 au tout premier run.
+  // Une fois que last_sync_at est posé, il prend le dessus.
+  const startFloor = config.sync.startDate
+    ? new Date(config.sync.startDate).toISOString()
+    : '1970-01-01T00:00:00.000Z';
+  const since = meta.last_sync_at || startFloor;
 
   const timer = metrics.syncCycleDuration.startTimer({ entity: entityType, type: 'incremental' });
 

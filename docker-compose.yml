@@ -16,11 +16,6 @@ services:
       - monitoring
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3500/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   loki:
     image: grafana/loki:3.0.0

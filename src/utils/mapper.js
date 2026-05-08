@@ -62,6 +62,8 @@ function mapFacture(row) {
       do_piece: row.DO_Piece,
       do_date: row.DO_Date,
       do_ref: row.DO_Ref,
+      // DO_Tiers = CT_Num du commercial (clients F_COMPTET avec CT_Commentaire='COMMERCIAL').
+      // C'est l'id Sage du commercial qui possède la facture.
       do_tiers: row.DO_Tiers,
       do_total_ht: row.DO_TotalHT,
       do_total_ht_net: row.DO_TotalHTNet,
