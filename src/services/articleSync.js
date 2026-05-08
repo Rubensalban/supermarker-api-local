@@ -11,8 +11,15 @@ const { mapArticle } = require('../utils/mapper');
 // Pour ne pas matraquer Sage à chaque tick de sync, la liste des AR_Ref
 // éligibles est mise en cache en RAM avec un TTL (SYNC_ARTICLE_CACHE_TTL).
 // On utilise EXISTS plutôt que IN(SELECT DISTINCT …) — meilleur plan SQL Server.
+//
+// Anti-perte : quand un AR_Ref devient éligible (1ère vente à un commercial),
+// son cbModification peut être très ancien — la sync incrémentale standard
+// (cbModification > since) ne le remonterait jamais. On capture donc le delta
+// du cache (newly eligible) à chaque rechargement et on les force dans le batch
+// suivant.
 
-let arRefCache = null; // { set: Set<string>, expiresAt: number }
+let arRefCache = null;            // { set: Set<string>, expiresAt: number }
+let pendingNewlyEligible = new Set(); // AR_Ref à pousser au prochain getChangedArticles
 
 async function loadEligibleArRefs(pool) {
   const req = pool.request();
@@ -53,20 +60,56 @@ async function getEligibleArRefSet() {
   }
 
   const pool = await getPool();
-  const set = await loadEligibleArRefs(pool);
-  arRefCache = { set, expiresAt: now + (ttlMs > 0 ? ttlMs : 60_000) };
-  return set;
+  const newSet = await loadEligibleArRefs(pool);
+
+  // Calcule le delta par rapport au snapshot précédent : tout AR_Ref qui
+  // apparaît pour la 1ère fois doit être poussé même si cbModification < since.
+  if (arRefCache) {
+    for (const arRef of newSet) {
+      if (!arRefCache.set.has(arRef)) pendingNewlyEligible.add(arRef);
+    }
+    if (pendingNewlyEligible.size > 0) {
+      syncLogger.info('Articles nouvellement éligibles détectés', {
+        count: pendingNewlyEligible.size,
+      });
+    }
+  }
+  // Au tout premier chargement (arRefCache === null) on ne marque rien comme
+  // "newly eligible" : la sync incrémentale les ramènera via cbModification
+  // (borne SYNC_START_DATE).
+
+  arRefCache = { set: newSet, expiresAt: now + (ttlMs > 0 ? ttlMs : 60_000) };
+  return newSet;
 }
 
 function invalidateCache() {
   arRefCache = null;
 }
 
+async function fetchArticlesByRefs(pool, arRefs) {
+  if (arRefs.length === 0) return [];
+  const req = pool.request();
+  arRefs.forEach((ref, i) => req.input(`r${i}`, ref));
+  const placeholders = arRefs.map((_, i) => `@r${i}`).join(',');
+  const result = await req.query(`
+    SELECT AR_Ref, AR_Design, FA_CodeFamille, AR_Raccourci,
+           AR_PrixAch, AR_PrixVen, AR_UnitePoids, AR_PoidsNet,
+           AR_Sommeil, AR_SuiviStock, AR_Publie, cbModification
+    FROM F_ARTICLE
+    WHERE AR_Ref IN (${placeholders})
+  `);
+  return result.recordset;
+}
+
 async function getChangedArticles(since) {
   const pool = await getPool();
+
+  // Force le rechargement du cache si TTL expiré (alimente pendingNewlyEligible).
+  const eligible = await getEligibleArRefSet();
+
   // 1) Articles modifiés depuis @since (requête simple sur F_ARTICLE, indexée
   //    sur cbModification dans la quasi-totalité des installations Sage).
-  const result = await pool.request()
+  const changed = await pool.request()
     .input('lastSync', since)
     .query(`
       SELECT AR_Ref, AR_Design, FA_CodeFamille, AR_Raccourci,
@@ -77,13 +120,26 @@ async function getChangedArticles(since) {
       ORDER BY cbModification ASC
     `);
 
-  if (result.recordset.length === 0) return [];
+  const rows = changed.recordset.filter(r => eligible.has(r.AR_Ref));
 
-  // 2) Filtre en mémoire via le set d'AR_Ref éligibles (mis en cache).
-  const eligible = await getEligibleArRefSet();
-  return result.recordset
-    .filter(row => eligible.has(row.AR_Ref))
-    .map(mapArticle);
+  // 2) Si des AR_Ref sont devenus éligibles depuis le dernier run, on les
+  //    récupère même si cbModification est ancien — sinon ils n'arriveront
+  //    jamais côté online.
+  if (pendingNewlyEligible.size > 0) {
+    const alreadyIncluded = new Set(rows.map(r => r.AR_Ref));
+    const toFetch = [...pendingNewlyEligible].filter(ref => !alreadyIncluded.has(ref));
+    const extras = await fetchArticlesByRefs(pool, toFetch);
+    rows.push(...extras);
+    // On vide le buffer une fois envoyé. Si l'envoi VPS échoue plus haut, le
+    // syncService remettra le batch en queue — l'idempotence côté online
+    // (sage_id UNIQUE + upsert atomique) garantit l'absence de doublon.
+    pendingNewlyEligible = new Set();
+    syncLogger.info('Articles nouvellement éligibles inclus dans le batch', {
+      count: extras.length,
+    });
+  }
+
+  return rows.map(mapArticle);
 }
 
 async function getAllArticleIds() {
