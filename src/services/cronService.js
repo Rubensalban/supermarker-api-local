@@ -60,9 +60,29 @@ function start() {
 
       const timer = metrics.queueProcessingDuration.startTimer();
       try {
-        await vpsService.sendBatch(entityType, 'UPSERT', records);
+        const ack = await vpsService.sendBatch(entityType, 'UPSERT', records);
+        const confirmed = new Set(Array.isArray(ack && ack.processed_sage_ids) ? ack.processed_sage_ids : []);
+
+        // Si l'API-ONLINE ne renvoie pas la liste (ancienne version), on
+        // considère tout confirmé sur succès HTTP — comportement antérieur.
+        const fallbackAllOk = confirmed.size === 0 && (!ack || !ack.errors);
+
         for (const item of items) {
-          queueService.markDone(item.id);
+          if (fallbackAllOk || confirmed.has(item.sage_id)) {
+            queueService.markDone(item.id);
+          } else {
+            // Record envoyé mais non confirmé : incrémenter les tentatives et
+            // laisser repasser au cycle suivant.
+            const errMsg = (ack && ack.details && ack.details.find(d => d.sage_id === item.sage_id)?.error) || 'not confirmed by online';
+            if (item.attempts + 1 >= item.max_attempts) {
+              queueService.markFailed(item.id, errMsg);
+              alertService.fireAlert('queue_item_max_retries', 'ERROR',
+                `Element ${item.sage_id} a atteint le max de tentatives`,
+                { sage_id: item.sage_id, entity: entityType });
+            } else {
+              queueService.incrementAttempts(item.id, errMsg);
+            }
+          }
         }
         timer();
       } catch (err) {

@@ -14,6 +14,7 @@ const entityConfig = {
   client: {
     getChanged: clientSync.getChangedClients,
     getAllIds: clientSync.getAllClientIds,
+    getByIds: clientSync.getClientsByIds,
   },
   article: {
     getChanged: articleSync.getChangedArticles,
@@ -85,8 +86,26 @@ async function syncIncremental(entityType) {
       for (let i = 0; i < records.length; i += config.vps.batchSize) {
         const batch = records.slice(i, i + config.vps.batchSize);
         try {
-          await vpsService.sendBatch(entityType, 'UPSERT', batch);
+          const ack = await vpsService.sendBatch(entityType, 'UPSERT', batch);
           metrics.syncRecordsProcessedTotal.inc({ entity: entityType, operation: 'UPSERT' }, batch.length);
+
+          // Cohérence : compare les sage_ids envoyés vs ceux confirmés enregistrés
+          // par l'API-ONLINE. Les non-confirmés (erreur côté online) sont remis
+          // en queue pour retry au prochain cycle.
+          const confirmed = new Set(Array.isArray(ack && ack.processed_sage_ids) ? ack.processed_sage_ids : []);
+          const missing = batch.filter(r => !confirmed.has(r.sage_id));
+          if (missing.length > 0) {
+            syncLogger.warn('Records non confirmes par API-VPS, re-queue', {
+              entity: entityType,
+              sent: batch.length,
+              confirmed: confirmed.size,
+              missing: missing.length,
+              missing_ids: missing.map(r => r.sage_id),
+            });
+            for (const record of missing) {
+              queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+            }
+          }
         } catch {
           // VPS devenu inaccessible, mettre le reste en queue
           for (const record of records.slice(i)) {
@@ -138,6 +157,35 @@ async function syncFull(entityType) {
 
     if (vpsUp) {
       await vpsService.sendDeletions(entityType, allIds);
+
+      // Reconciliation : detecter les sage_ids actifs en Sage mais absents
+      // (ou is_deleted=true) cote online (suppression manuelle, restore
+      // qui n'a rien retrouve). Ne s'applique qu'aux entites avec getByIds.
+      if (conf.getByIds && allIds.length > 0) {
+        try {
+          const check = await vpsService.checkPresence(entityType, allIds);
+          const missing = (check && check.missing_sage_ids) || [];
+          if (missing.length > 0) {
+            syncLogger.warn('Reconciliation : sage_ids manquants online, re-upsert', {
+              entity: entityType, missing: missing.length, sample: missing.slice(0, 10),
+            });
+            const records = await conf.getByIds(missing);
+            for (let i = 0; i < records.length; i += config.vps.batchSize) {
+              const batch = records.slice(i, i + config.vps.batchSize);
+              try {
+                await vpsService.sendBatch(entityType, 'UPSERT', batch);
+              } catch {
+                for (const record of records.slice(i)) {
+                  queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+                }
+                break;
+              }
+            }
+          }
+        } catch (err) {
+          syncLogger.error('Reconciliation echouee', { entity: entityType, error: err.message });
+        }
+      }
     } else {
       syncLogger.warn('Sync full reportee : API-VPS inaccessible', { entity: entityType });
       timer();

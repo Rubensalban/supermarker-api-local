@@ -4,6 +4,14 @@
  */
 
 function mapClient(row) {
+  // cbCG_NumPrinc est un varbinary côté Sage. mssql renvoie un Buffer ; on
+  // sérialise en base64 pour transit JSON. L'API-ONLINE stocke en BYTEA.
+  const cbCgNumPrinc = row.cbCG_NumPrinc
+    ? Buffer.isBuffer(row.cbCG_NumPrinc)
+      ? row.cbCG_NumPrinc.toString('base64')
+      : row.cbCG_NumPrinc
+    : null;
+
   return {
     sage_id: row.CT_Num,
     sage_updated_at: row.cbModification,
@@ -11,23 +19,13 @@ function mapClient(row) {
       ct_num: row.CT_Num,
       ct_intitule: row.CT_Intitule,
       ct_type: row.CT_Type,
+      cg_numprinc: row.CG_NumPrinc,
+      cbcg_numprinc: cbCgNumPrinc,
       ct_classement: row.CT_Classement,
       ct_contact: row.CT_Contact,
-      ct_adresse: row.CT_Adresse,
       ct_complement: row.CT_Complement,
-      ct_code_postal: row.CT_CodePostal,
       ct_ville: row.CT_Ville,
-      ct_code_region: row.CT_CodeRegion,
-      ct_pays: row.CT_Pays,
       ct_telephone: row.CT_Telephone,
-      ct_telecopie: row.CT_Telecopie,
-      ct_email: row.CT_Email,
-      ct_site: row.CT_Site,
-      ct_siret: row.CT_Siret,
-      ct_ape: row.CT_Ape,
-      ct_identifiant: row.CT_Identifiant,
-      ct_sommeil: row.CT_Sommeil,
-      ct_commentaire: row.CT_Commentaire,
     },
   };
 }

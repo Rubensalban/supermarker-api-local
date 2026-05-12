@@ -11,7 +11,7 @@ services:
       - .env
     volumes:
       - api-data:/app/data
-      - api-logs:/app/logs
+      - ./logs:/app/logs
     networks:
       - monitoring
     extra_hosts:
@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml
-      - api-logs:/var/log/api-local:ro
+      - ./logs:/var/log/api-local:ro
     command: -config.file=/etc/promtail/config.yml
     networks:
       - monitoring
@@ -81,6 +81,7 @@ services:
       - GF_SERVER_ROOT_URL=http://localhost:4500/
       - GF_RENDERING_SERVER_URL=http://grafana-image-renderer:8081/render
       - GF_RENDERING_CALLBACK_URL=http://grafana:3000/
+      - GF_RENDERING_RENDERER_TOKEN=${GRAFANA_RENDERER_TOKEN:?GRAFANA_RENDERER_TOKEN required}
       - GF_LOG_FILTERS=rendering:debug
     volumes:
       - grafana-data:/var/lib/grafana
@@ -97,12 +98,13 @@ services:
     restart: unless-stopped
     environment:
       - ENABLE_METRICS=true
+      # Doit etre identique a GF_RENDERING_RENDERER_TOKEN cote grafana
+      - AUTH_TOKEN=${GRAFANA_RENDERER_TOKEN:?GRAFANA_RENDERER_TOKEN required}
     networks:
       - monitoring
 
 volumes:
   api-data:
-  api-logs:
   prometheus-data:
   grafana-data:
   loki-data:

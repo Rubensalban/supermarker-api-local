@@ -96,6 +96,28 @@ async function sendDeletions(entityType, activeSageIds) {
 }
 
 /**
+ * Verifie cote API-VPS la presence d'une liste de sage_ids.
+ * Renvoie { missing_sage_ids: [...] } : ids envoyes mais absents/soft-deleted online.
+ */
+async function checkPresence(entityType, sageIds) {
+  const endpoint = '/check';
+  const payload = { entity_type: entityType, sage_ids: sageIds };
+  const timer = metrics.vpsRequestDuration.startTimer({ endpoint });
+  try {
+    const response = await vpsClient.post(endpoint, payload);
+    timer();
+    metrics.vpsRequestsTotal.inc({ endpoint, status: String(response.status) });
+    return response.data;
+  } catch (err) {
+    timer();
+    const httpStatus = err.response ? String(err.response.status) : 'network_error';
+    metrics.vpsRequestsTotal.inc({ endpoint, status: httpStatus });
+    syncLogger.error('Echec check presence API-VPS', { entityType, error: err.message });
+    throw err;
+  }
+}
+
+/**
  * Healthcheck API-VPS.
  */
 async function checkHealth() {
@@ -107,4 +129,4 @@ async function checkHealth() {
   }
 }
 
-module.exports = { sendBatch, sendDeletions, checkHealth };
+module.exports = { sendBatch, sendDeletions, checkPresence, checkHealth };
