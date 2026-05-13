@@ -69,6 +69,10 @@ function mapFacture(row) {
       do_net_a_payer: row.DO_NetAPayer,
       do_montant_regle: row.DO_MontantRegle,
       do_statut: row.DO_Statut,
+      // Lien retour (DO_Type=7) -> facture d'origine cote entete Sage.
+      // Peut etre vide : Sage ne le renseigne pas systematiquement, dans
+      // ce cas le lien est porte par les lignes (DL_PieceBL / DL_PieceBC).
+      do_piece_orig: row.DO_PieceOrig || null,
     },
     lignes: [],
   };
@@ -86,6 +90,13 @@ function mapFactureLigne(row) {
       dl_prix_unitaire: row.DL_PrixUnitaire,
       dl_montant_ht: row.DL_MontantHT,
       dl_montant_ttc: row.DL_MontantTTC,
+      // Tracabilite Sage : pieces d'origine (BL/BC) et quantites initiales.
+      // Sur une ligne de facture retour (DO_Type=7), DL_PieceBL pointe vers
+      // la facture d'origine ligne par ligne.
+      dl_piece_bl: row.DL_PieceBL || null,
+      dl_piece_bc: row.DL_PieceBC || null,
+      dl_qte_bl: row.DL_QteBL,
+      dl_qte_bc: row.DL_QteBC,
     },
   };
 }
@@ -104,8 +115,35 @@ function mapReglement(row) {
       n_reglement: row.N_Reglement,
       rg_impute: row.RG_Impute,
       rg_compta: row.RG_Compta,
+      rg_libelle: row.RG_Libelle || null,
+      rg_type_reg: row.RG_TypeReg,
     },
   };
 }
 
-module.exports = { mapClient, mapArticle, mapFacture, mapFactureLigne, mapReglement };
+// Miroir d'une ligne F_REGLECH (Sage) : une imputation d'un reglement
+// sur une facture. sage_id composite "{RG_No}-{DR_No}" pour rester unique.
+function mapReglementImputation(row) {
+  return {
+    sage_id: `${row.RG_No}-${row.DR_No}`,
+    sage_updated_at: row.cbModification,
+    data: {
+      rg_no: row.RG_No,
+      dr_no: row.DR_No,
+      do_domaine: row.DO_Domaine,
+      do_type: row.DO_Type,
+      do_piece: row.DO_Piece,
+      rc_montant: row.RC_Montant,
+      rg_type_reg: row.RG_TypeReg,
+    },
+  };
+}
+
+module.exports = {
+  mapClient,
+  mapArticle,
+  mapFacture,
+  mapFactureLigne,
+  mapReglement,
+  mapReglementImputation,
+};

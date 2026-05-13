@@ -59,7 +59,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_alert_created ON alert_history(created_at);
 `);
 
-const entities = ['client', 'article', 'facture', 'reglement'];
+const entities = ['client', 'article', 'facture', 'reglement', 'reglement_imputation'];
 const upsertMeta = db.prepare(`
   INSERT OR IGNORE INTO sync_metadata (entity_type) VALUES (?)
 `);

@@ -16,9 +16,9 @@ async function getChangedReglements(since) {
   const req = pool.request().input('lastSync', since);
   if (config.sync.startDate) req.input('startDate', config.sync.startDate);
   const result = await req.query(`
-      SELECT RG_No, CT_NumPayeur, RG_Date, RG_Reference, RG_Montant,
-             RG_MontantDev, N_Reglement, RG_Impute, RG_Compta,
-             cbModification
+      SELECT RG_No, CT_NumPayeur, RG_Date, RG_Reference, RG_Libelle,
+             RG_Montant, RG_MontantDev, N_Reglement, RG_Impute, RG_Compta,
+             RG_TypeReg, cbModification
       FROM F_CREGLEMENT
       WHERE ${COMMERCIAL_PAYEUR_SUBQUERY}
         AND cbModification > @lastSync

@@ -52,6 +52,12 @@ const stmts = {
     UPDATE sync_queue SET status = 'PENDING', attempts = 0, error = NULL WHERE status = 'FAILED'
   `),
 
+  // Reset des items restes PROCESSING : utilise au demarrage uniquement
+  // (le process precedent a ete tue avant de pouvoir marquer DONE/FAILED).
+  resetProcessing: db.prepare(`
+    UPDATE sync_queue SET status = 'PENDING' WHERE status = 'PROCESSING'
+  `),
+
   getAll: db.prepare(`
     SELECT * FROM sync_queue WHERE status IN ('PENDING', 'FAILED') ORDER BY created_at ASC
   `),
@@ -120,6 +126,13 @@ function retryFailed() {
   return result.changes;
 }
 
+// Au demarrage : tout item bloque en PROCESSING est issu d'un crash du
+// process precedent. On le repasse en PENDING pour qu'il soit retente.
+function resetStaleProcessing() {
+  const result = stmts.resetProcessing.run();
+  return result.changes;
+}
+
 function getAll() {
   return stmts.getAll.all();
 }
@@ -136,5 +149,6 @@ module.exports = {
   updateMetrics,
   purgeDone,
   retryFailed,
+  resetStaleProcessing,
   getAll,
 };

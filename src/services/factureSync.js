@@ -27,7 +27,7 @@ async function getChangedFactures(since) {
   const entetes = await reqEntetes.query(`
       SELECT DO_Domaine, DO_Type, DO_Piece, DO_Date, DO_Ref, DO_Tiers,
              DO_TotalHT, DO_TotalHTNet, DO_TotalTTC, DO_NetAPayer,
-             DO_MontantRegle, DO_Statut, cbModification
+             DO_MontantRegle, DO_Statut, DO_PieceOrig, cbModification
       FROM F_DOCENTETE
       WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
         AND ${COMMERCIAL_TIERS_SUBQUERY}
@@ -48,7 +48,8 @@ async function getChangedFactures(since) {
   const lignesResult = await request.query(`
     SELECT DO_Domaine, DO_Type, DO_Piece, DL_Ligne, AR_Ref,
            DL_Design, DL_Qte, DL_PrixUnitaire, DL_MontantHT,
-           DL_MontantTTC, cbModification
+           DL_MontantTTC, DL_PieceBL, DL_PieceBC, DL_QteBL, DL_QteBC,
+           cbModification
     FROM F_DOCLIGNE
     WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
       AND DO_Piece IN (${placeholders})

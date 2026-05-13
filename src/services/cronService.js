@@ -9,10 +9,37 @@ const metricsService = require('./metricsService');
 const vpsService = require('./vpsService');
 const metrics = require('../config/prometheus');
 
+// Locks anti-chevauchement : un cycle long ne doit pas se lancer en double
+// si le tick suivant arrive avant la fin (cas : VPS lent + sync incrementale
+// toutes les 5min). Sans ces locks, on saturait le VPS et la pool SQL Server.
+const locks = {
+  incremental: false,
+  full: false,
+  queue: false,
+};
+
 function start() {
+  // 1) Recovery au demarrage : les items restes PROCESSING sont issus d'un
+  // crash du process precedent (kill du container pendant une sync). On les
+  // repasse en PENDING avant de demarrer les crons pour qu'ils soient
+  // naturellement repris au premier cycle de queue, sans double envoi.
+  try {
+    const recovered = queueService.resetStaleProcessing();
+    if (recovered > 0) {
+      appLogger.info('Startup recovery : items PROCESSING orphelins remis en PENDING', { count: recovered });
+    }
+  } catch (err) {
+    appLogger.error('Startup recovery echoue', { error: err.message });
+  }
+
   // Sync incrementale
   cron.schedule(`*/${config.sync.incrementalInterval} * * * *`, async () => {
     if (syncService.isPaused()) return;
+    if (locks.incremental) {
+      syncLogger.warn('Cron: sync incrementale precedente encore en cours, tick ignore');
+      return;
+    }
+    locks.incremental = true;
     syncLogger.info('Cron: sync incrementale demarree');
     try {
       const results = await syncService.syncAllIncremental();
@@ -21,29 +48,42 @@ function start() {
       }
     } catch (err) {
       appLogger.error('Cron: erreur sync incrementale', { error: err.message });
+    } finally {
+      locks.incremental = false;
     }
   });
 
   // Sync complete (detection suppressions)
   cron.schedule(`0 */${config.sync.fullInterval} * * * *`, async () => {
     if (syncService.isPaused()) return;
+    if (locks.full) {
+      syncLogger.warn('Cron: sync complete precedente encore en cours, tick ignore');
+      return;
+    }
+    locks.full = true;
     syncLogger.info('Cron: sync complete demarree');
     try {
       await syncService.syncAllFull();
     } catch (err) {
       appLogger.error('Cron: erreur sync complete', { error: err.message });
+    } finally {
+      locks.full = false;
     }
   });
 
   // Traitement de la queue
   cron.schedule(`*/${config.sync.queueProcessInterval} * * * * *`, async () => {
     if (syncService.isPaused()) return;
+    if (locks.queue) return; // silencieux : la queue tick chaque minute
 
     const vpsUp = healthService.isVpsUp();
     if (!vpsUp) return;
 
     const pending = queueService.getPending(config.vps.batchSize);
     if (pending.length === 0) return;
+
+    locks.queue = true;
+    try {
 
     // Regrouper par entity_type
     const grouped = {};
@@ -98,6 +138,9 @@ function start() {
           }
         }
       }
+    }
+    } finally {
+      locks.queue = false;
     }
   });
 

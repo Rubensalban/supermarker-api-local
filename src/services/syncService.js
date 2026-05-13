@@ -9,6 +9,7 @@ const clientSync = require('./clientSync');
 const articleSync = require('./articleSync');
 const factureSync = require('./factureSync');
 const reglementSync = require('./reglementSync');
+const reglementImputationSync = require('./reglementImputationSync');
 
 const entityConfig = {
   client: {
@@ -27,6 +28,13 @@ const entityConfig = {
   reglement: {
     getChanged: reglementSync.getChangedReglements,
     getAllIds: reglementSync.getAllReglementIds,
+  },
+  // Imputations placees apres reglement : l'ordre des entites est conserve
+  // par Object.keys, donc syncAllIncremental traite reglement avant les
+  // imputations — coherent avec la dependance metier (FK logique rg_no).
+  reglement_imputation: {
+    getChanged: reglementImputationSync.getChangedReglementImputations,
+    getAllIds: reglementImputationSync.getAllReglementImputationIds,
   },
 };
 
