@@ -40,6 +40,33 @@ async function getChangedReglementImputations(since) {
   return result.recordset.map(mapReglementImputation);
 }
 
+// Lecture paginée des imputations pour la sync full de masse.
+// Ordre stable (cbModification, RG_No, DR_No) via OFFSET/FETCH.
+async function getChangedReglementImputationsPage(since, offset, limit) {
+  const pool = await getPool();
+  const req = pool.request()
+    .input('lastSync', since)
+    .input('offset', offset)
+    .input('limit', limit);
+  if (config.sync.startDate) req.input('startDate', config.sync.startDate);
+
+  const result = await req.query(`
+    SELECT rc.RG_No, rc.DR_No, rc.DO_Domaine, rc.DO_Type, rc.DO_Piece,
+           rc.RC_Montant, rc.RG_TypeReg,
+           CASE WHEN rc.cbModification > c.cbModification
+                THEN rc.cbModification ELSE c.cbModification END AS cbModification
+    FROM F_REGLECH rc
+    INNER JOIN F_CREGLEMENT c ON c.RG_No = rc.RG_No
+    WHERE ${COMMERCIAL_PAYEUR_SUBQUERY}
+      AND (rc.cbModification > @lastSync OR c.cbModification > @lastSync)
+      ${startDateClause()}
+    ORDER BY cbModification ASC, rc.RG_No ASC, rc.DR_No ASC
+    OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+  `);
+
+  return result.recordset.map(mapReglementImputation);
+}
+
 async function getAllReglementImputationIds() {
   const pool = await getPool();
   const req = pool.request();
@@ -57,5 +84,6 @@ async function getAllReglementImputationIds() {
 
 module.exports = {
   getChangedReglementImputations,
+  getChangedReglementImputationsPage,
   getAllReglementImputationIds,
 };

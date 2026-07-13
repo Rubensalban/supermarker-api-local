@@ -64,13 +64,20 @@ async function sendBatch(entityType, operation, records) {
 /**
  * Envoie la liste des IDs actifs pour detection des suppressions.
  */
-async function sendDeletions(entityType, activeSageIds) {
+async function sendDeletions(entityType, activeSageIds, chunkMeta = {}) {
   const endpoint = '/receive/deletions';
 
   const payload = {
     entity_type: entityType,
     timestamp: new Date().toISOString(),
     active_sage_ids: activeSageIds,
+    // Métadonnées de chunk : permettent à l'API-ONLINE de réconcilier les
+    // suppressions par lots plutôt que sur la totalité des IDs d'un coup.
+    // chunk_index / chunk_total : position du lot. all_ids_count : total réel
+    // d'IDs actifs (pour distinguer "0 actif" d'un simple lot vide).
+    chunk_index: chunkMeta.chunkIndex ?? 0,
+    chunk_total: chunkMeta.chunkTotal ?? 1,
+    all_ids_count: chunkMeta.allIdsCount ?? activeSageIds.length,
   };
 
   const timer = metrics.vpsRequestDuration.startTimer({ endpoint });

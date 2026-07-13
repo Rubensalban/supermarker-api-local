@@ -14,19 +14,23 @@ const reglementImputationSync = require('./reglementImputationSync');
 const entityConfig = {
   client: {
     getChanged: clientSync.getChangedClients,
+    getChangedPage: clientSync.getChangedClientsPage,
     getAllIds: clientSync.getAllClientIds,
     getByIds: clientSync.getClientsByIds,
   },
   article: {
     getChanged: articleSync.getChangedArticles,
+    // Pas de getChangedPage : le set éligible est déjà filtré en RAM via cache.
     getAllIds: articleSync.getAllArticleIds,
   },
   facture: {
     getChanged: factureSync.getChangedFactures,
+    getChangedPage: factureSync.getChangedFacturesPage,
     getAllIds: factureSync.getAllFactureIds,
   },
   reglement: {
     getChanged: reglementSync.getChangedReglements,
+    getChangedPage: reglementSync.getChangedReglementsPage,
     getAllIds: reglementSync.getAllReglementIds,
   },
   // Imputations placees apres reglement : l'ordre des entites est conserve
@@ -34,9 +38,71 @@ const entityConfig = {
   // imputations — coherent avec la dependance metier (FK logique rg_no).
   reglement_imputation: {
     getChanged: reglementImputationSync.getChangedReglementImputations,
+    getChangedPage: reglementImputationSync.getChangedReglementImputationsPage,
     getAllIds: reglementImputationSync.getAllReglementImputationIds,
   },
 };
+
+// Verrou par entité : garantit qu'une même entité n'est jamais synchronisée
+// par deux cycles à la fois (ex : le cron full démarre alors que l'incrémental
+// de la même entité n'a pas fini). Les locks globaux du cronService protègent
+// contre le chevauchement de cycles ; celui-ci protège l'entité elle-même
+// contre un full + incremental simultanés (crons indépendants).
+const entityLocks = new Set();
+
+function acquireEntityLock(entityType) {
+  if (entityLocks.has(entityType)) return false;
+  entityLocks.add(entityType);
+  return true;
+}
+
+function releaseEntityLock(entityType) {
+  entityLocks.delete(entityType);
+}
+
+// Découpe un tableau en chunks de taille `size`.
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+// Envoie un lot de records par batches vers l'API-ONLINE, avec re-queue des
+// non-confirmés. Retourne le nombre total confirmé. Utilisé par la lecture
+// paginée (full + incremental).
+async function sendRecords(entityType, records) {
+  let confirmedTotal = 0;
+  for (let i = 0; i < records.length; i += config.vps.batchSize) {
+    const batch = records.slice(i, i + config.vps.batchSize);
+    try {
+      const ack = await vpsService.sendBatch(entityType, 'UPSERT', batch);
+      metrics.syncRecordsProcessedTotal.inc({ entity: entityType, operation: 'UPSERT' }, batch.length);
+
+      const confirmed = new Set(Array.isArray(ack && ack.processed_sage_ids) ? ack.processed_sage_ids : []);
+      const missing = batch.filter(r => !confirmed.has(r.sage_id));
+      confirmedTotal += (batch.length - missing.length);
+      if (missing.length > 0) {
+        syncLogger.warn('Records non confirmes par API-VPS, re-queue', {
+          entity: entityType,
+          sent: batch.length,
+          confirmed: confirmed.size,
+          missing: missing.length,
+          missing_ids: missing.map(r => r.sage_id).slice(0, 20),
+        });
+        for (const record of missing) {
+          queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+        }
+      }
+    } catch {
+      // VPS devenu inaccessible : mettre le reste de CE lot en queue et signaler.
+      for (const record of records.slice(i)) {
+        queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+      }
+      throw new Error('vps_unreachable_during_send');
+    }
+  }
+  return confirmedTotal;
+}
 
 const getMeta = db.prepare('SELECT * FROM sync_metadata WHERE entity_type = ?');
 const updateMeta = db.prepare(`
@@ -68,6 +134,13 @@ async function syncIncremental(entityType) {
   const conf = entityConfig[entityType];
   if (!conf) throw new Error(`Entite inconnue : ${entityType}`);
 
+  // Verrou par entité : si un full de la même entité est en cours, on saute
+  // ce tick incrémental (il repassera au prochain cycle).
+  if (!acquireEntityLock(entityType)) {
+    syncLogger.warn('Sync incrementale ignoree : entite deja verrouillee', { entity: entityType });
+    return { entity: entityType, skipped: true, reason: 'entity_locked' };
+  }
+
   const meta = getMeta.get(entityType);
   // Borne basse : SYNC_START_DATE (si définie) prime sur 1970 au tout premier run.
   // Une fois que last_sync_at est posé, il prend le dessus.
@@ -79,64 +152,66 @@ async function syncIncremental(entityType) {
   const timer = metrics.syncCycleDuration.startTimer({ entity: entityType, type: 'incremental' });
 
   try {
-    const records = await conf.getChanged(since);
-
-    if (records.length === 0) {
-      timer();
-      metrics.syncCyclesTotal.inc({ entity: entityType, type: 'incremental', status: 'success' });
-      return { entity: entityType, processed: 0 };
-    }
-
     const vpsUp = healthService.isVpsUp();
+    const pageSize = config.sync.readPageSize;
+    let totalRead = 0;
 
-    if (vpsUp) {
-      // Envoyer par batch
-      for (let i = 0; i < records.length; i += config.vps.batchSize) {
-        const batch = records.slice(i, i + config.vps.batchSize);
-        try {
-          const ack = await vpsService.sendBatch(entityType, 'UPSERT', batch);
-          metrics.syncRecordsProcessedTotal.inc({ entity: entityType, operation: 'UPSERT' }, batch.length);
+    if (conf.getChangedPage) {
+      // ─── Lecture paginée (streaming) : on lit Sage par fenêtres et on envoie
+      // au fil de l'eau. Le pic mémoire est borné à une page, pas au delta total.
+      // Ordre stable garanti par les getChangedPage (cbModification + clé).
+      let offset = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const page = await conf.getChangedPage(since, offset, pageSize);
+        if (page.length === 0) break;
+        totalRead += page.length;
 
-          // Cohérence : compare les sage_ids envoyés vs ceux confirmés enregistrés
-          // par l'API-ONLINE. Les non-confirmés (erreur côté online) sont remis
-          // en queue pour retry au prochain cycle.
-          const confirmed = new Set(Array.isArray(ack && ack.processed_sage_ids) ? ack.processed_sage_ids : []);
-          const missing = batch.filter(r => !confirmed.has(r.sage_id));
-          if (missing.length > 0) {
-            syncLogger.warn('Records non confirmes par API-VPS, re-queue', {
-              entity: entityType,
-              sent: batch.length,
-              confirmed: confirmed.size,
-              missing: missing.length,
-              missing_ids: missing.map(r => r.sage_id),
-            });
-            for (const record of missing) {
-              queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
-            }
+        if (vpsUp) {
+          try {
+            await sendRecords(entityType, page);
+          } catch {
+            // VPS tombé pendant l'envoi : sendRecords a déjà mis le reste de la
+            // page en queue. On enfile aussi les pages suivantes non lues n'a
+            // pas de sens (on ne les a pas), on arrête la lecture : le prochain
+            // cycle reprendra depuis `since` (idempotent côté online).
+            break;
           }
-        } catch {
-          // VPS devenu inaccessible, mettre le reste en queue
-          for (const record of records.slice(i)) {
+        } else {
+          for (const record of page) {
             queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
           }
-          break;
         }
+
+        // Dernière page (partielle) : fin du flux.
+        if (page.length < pageSize) break;
+        offset += pageSize;
       }
     } else {
-      // Mettre tout en queue
-      for (const record of records) {
-        queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+      // ─── Fallback non paginé (article : déjà borné par cache RAM).
+      const records = await conf.getChanged(since);
+      totalRead = records.length;
+      if (records.length > 0) {
+        if (vpsUp) {
+          try {
+            await sendRecords(entityType, records);
+          } catch { /* reste déjà mis en queue par sendRecords */ }
+        } else {
+          for (const record of records) {
+            queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+          }
+        }
       }
     }
 
-    updateMeta.run(new Date().toISOString(), 'SUCCESS', records.length, entityType);
+    updateMeta.run(new Date().toISOString(), 'SUCCESS', totalRead, entityType);
     metrics.syncCyclesTotal.inc({ entity: entityType, type: 'incremental', status: 'success' });
     metrics.syncLastSuccess.set({ entity: entityType, type: 'incremental' }, Date.now() / 1000);
     timer();
 
-    syncLogger.info('Sync incrementale terminee', { entity: entityType, records: records.length, queued: !vpsUp });
+    syncLogger.info('Sync incrementale terminee', { entity: entityType, records: totalRead, queued: !vpsUp });
 
-    return { entity: entityType, processed: records.length };
+    return { entity: entityType, processed: totalRead };
   } catch (err) {
     timer();
     metrics.syncCyclesTotal.inc({ entity: entityType, type: 'incremental', status: 'failure' });
@@ -145,6 +220,8 @@ async function syncIncremental(entityType) {
 
     syncLogger.error('Echec sync incrementale', { entity: entityType, error: err.message });
     throw err;
+  } finally {
+    releaseEntityLock(entityType);
   }
 }
 
@@ -157,6 +234,13 @@ async function syncFull(entityType) {
   const conf = entityConfig[entityType];
   if (!conf) throw new Error(`Entite inconnue : ${entityType}`);
 
+  // Verrou par entité : ne pas lancer un full si un incrémental (ou un autre
+  // full) de la même entité tourne — évite les envois croisés / la double charge.
+  if (!acquireEntityLock(entityType)) {
+    syncLogger.warn('Sync full ignoree : entite deja verrouillee', { entity: entityType });
+    return { entity: entityType, skipped: true, reason: 'entity_locked' };
+  }
+
   const timer = metrics.syncCycleDuration.startTimer({ entity: entityType, type: 'full' });
 
   try {
@@ -164,28 +248,51 @@ async function syncFull(entityType) {
     const vpsUp = healthService.isVpsUp();
 
     if (vpsUp) {
-      await vpsService.sendDeletions(entityType, allIds);
+      // ─── Détection des suppressions par chunks : un seul POST avec des
+      // milliers d'IDs génère un WHERE NOT IN (...) massif côté PostgreSQL
+      // (lent, risque de timeout). On découpe en lots deletionsChunkSize.
+      // NB : chaque chunk est une liste PARTIELLE d'IDs actifs — l'API-ONLINE
+      // doit donc traiter les deletions en mode "réconciliation par lot"
+      // (voir syncController.receiveDeletions) et non en "tout ce qui n'est pas
+      // dans ce lot est supprimé".
+      const deletionChunks = chunk(allIds, config.sync.deletionsChunkSize);
+      const totalChunks = deletionChunks.length || 1;
+      for (let idx = 0; idx < deletionChunks.length; idx++) {
+        await vpsService.sendDeletions(entityType, deletionChunks[idx], {
+          chunkIndex: idx,
+          chunkTotal: totalChunks,
+          allIdsCount: allIds.length,
+        });
+      }
+      // Cas liste vide : signaler explicitement (0 actif => tout soft-delete).
+      if (deletionChunks.length === 0) {
+        await vpsService.sendDeletions(entityType, [], {
+          chunkIndex: 0, chunkTotal: 1, allIdsCount: 0,
+        });
+      }
 
       // Reconciliation : detecter les sage_ids actifs en Sage mais absents
       // (ou is_deleted=true) cote online (suppression manuelle, restore
       // qui n'a rien retrouve). Ne s'applique qu'aux entites avec getByIds.
+      // Le /check est aussi chunké pour ne pas envoyer des milliers d'IDs.
       if (conf.getByIds && allIds.length > 0) {
         try {
-          const check = await vpsService.checkPresence(entityType, allIds);
-          const missing = (check && check.missing_sage_ids) || [];
+          const missing = [];
+          for (const idsChunk of chunk(allIds, config.sync.deletionsChunkSize)) {
+            const check = await vpsService.checkPresence(entityType, idsChunk);
+            missing.push(...((check && check.missing_sage_ids) || []));
+          }
           if (missing.length > 0) {
             syncLogger.warn('Reconciliation : sage_ids manquants online, re-upsert', {
               entity: entityType, missing: missing.length, sample: missing.slice(0, 10),
             });
-            const records = await conf.getByIds(missing);
-            for (let i = 0; i < records.length; i += config.vps.batchSize) {
-              const batch = records.slice(i, i + config.vps.batchSize);
+            // Re-upsert par lots de récupération pour borner la RAM.
+            for (const missingChunk of chunk(missing, config.sync.readPageSize)) {
+              const records = await conf.getByIds(missingChunk);
               try {
-                await vpsService.sendBatch(entityType, 'UPSERT', batch);
+                await sendRecords(entityType, records);
               } catch {
-                for (const record of records.slice(i)) {
-                  queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
-                }
+                // reste déjà mis en queue par sendRecords
                 break;
               }
             }
@@ -215,6 +322,8 @@ async function syncFull(entityType) {
 
     syncLogger.error('Echec sync full', { entity: entityType, error: err.message });
     throw err;
+  } finally {
+    releaseEntityLock(entityType);
   }
 }
 

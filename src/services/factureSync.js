@@ -69,6 +69,62 @@ async function getChangedFactures(since) {
   });
 }
 
+// Lecture paginée des factures (en-têtes + lignes de la page) pour la sync
+// full de masse. Ordonnée par (cbModification, DO_Piece) via OFFSET/FETCH.
+// Ne charge que `limit` en-têtes et leurs lignes en RAM à la fois.
+async function getChangedFacturesPage(since, offset, limit) {
+  const pool = await getPool();
+
+  const reqEntetes = pool.request()
+    .input('lastSync', since)
+    .input('offset', offset)
+    .input('limit', limit);
+  if (config.sync.startDate) reqEntetes.input('startDate', config.sync.startDate);
+
+  const entetes = await reqEntetes.query(`
+      SELECT DO_Domaine, DO_Type, DO_Piece, DO_Date, DO_Ref, DO_Tiers,
+             DO_TotalHT, DO_TotalHTNet, DO_TotalTTC, DO_NetAPayer,
+             DO_MontantRegle, DO_Statut, DO_PieceOrig, cbModification
+      FROM F_DOCENTETE
+      WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
+        AND ${COMMERCIAL_TIERS_SUBQUERY}
+        AND cbModification > @lastSync
+        ${startDateClause('')}
+      ORDER BY cbModification ASC, DO_Piece ASC
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+    `);
+
+  if (entetes.recordset.length === 0) return [];
+
+  const pieces = entetes.recordset.map(r => r.DO_Piece);
+  const request = pool.request();
+  pieces.forEach((piece, i) => request.input(`piece${i}`, piece));
+  const placeholders = pieces.map((_, i) => `@piece${i}`).join(',');
+
+  const lignesResult = await request.query(`
+    SELECT DO_Domaine, DO_Type, DO_Piece, DL_Ligne, AR_Ref,
+           DL_Design, DL_Qte, DL_PrixUnitaire, DL_MontantHT,
+           DL_MontantTTC, DL_PieceBL, DL_PieceBC, DL_QteBL, DL_QteBC,
+           cbModification
+    FROM F_DOCLIGNE
+    WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
+      AND DO_Piece IN (${placeholders})
+    ORDER BY DO_Piece, DL_Ligne
+  `);
+
+  const lignesMap = {};
+  for (const row of lignesResult.recordset) {
+    if (!lignesMap[row.DO_Piece]) lignesMap[row.DO_Piece] = [];
+    lignesMap[row.DO_Piece].push(mapFactureLigne(row));
+  }
+
+  return entetes.recordset.map(row => {
+    const facture = mapFacture(row);
+    facture.lignes = lignesMap[row.DO_Piece] || [];
+    return facture;
+  });
+}
+
 async function getAllFactureIds() {
   const pool = await getPool();
   const req = pool.request();
@@ -82,4 +138,4 @@ async function getAllFactureIds() {
   return result.recordset.map(row => row.DO_Piece);
 }
 
-module.exports = { getChangedFactures, getAllFactureIds };
+module.exports = { getChangedFactures, getChangedFacturesPage, getAllFactureIds };

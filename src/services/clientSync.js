@@ -1,4 +1,5 @@
 const { getPool } = require('../config/database');
+const config = require('../config/env');
 const { mapClient } = require('../utils/mapper');
 
 const COMMERCIAL_FILTER = `CT_Type = 0 AND UPPER(LTRIM(RTRIM(CT_Commentaire))) = 'COMMERCIAL'`;
@@ -19,6 +20,25 @@ async function getChangedClients(since) {
       FROM F_COMPTET
       WHERE ${COMMERCIAL_FILTER} AND cbModification > @lastSync
       ORDER BY cbModification ASC
+    `);
+  return result.recordset.map(mapClient);
+}
+
+// Lecture paginée pour la sync full de masse : une fenêtre stable ordonnée par
+// (cbModification, CT_Num) via OFFSET/FETCH. Évite de charger tous les clients
+// en RAM. Retourne [] quand la page est vide (fin de flux).
+async function getChangedClientsPage(since, offset, limit) {
+  const pool = await getPool();
+  const result = await pool.request()
+    .input('lastSync', since)
+    .input('offset', offset)
+    .input('limit', limit)
+    .query(`
+      SELECT ${SELECT_COLS}
+      FROM F_COMPTET
+      WHERE ${COMMERCIAL_FILTER} AND cbModification > @lastSync
+      ORDER BY cbModification ASC, CT_Num ASC
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
   return result.recordset.map(mapClient);
 }
@@ -45,4 +65,4 @@ async function getClientsByIds(ids) {
   return result.recordset.map(mapClient);
 }
 
-module.exports = { getChangedClients, getAllClientIds, getClientsByIds, COMMERCIAL_FILTER };
+module.exports = { getChangedClients, getChangedClientsPage, getAllClientIds, getClientsByIds, COMMERCIAL_FILTER };

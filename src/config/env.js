@@ -41,6 +41,14 @@ module.exports = {
     batchSize: parseInt(process.env.SYNC_BATCH_SIZE, 10) || 50,
     retryMax: parseInt(process.env.SYNC_RETRY_MAX, 10) || 3,
     retryBaseDelay: parseInt(process.env.SYNC_RETRY_BASE_DELAY, 10) || 2000,
+    // Taille des pages de lecture Sage (SQL Server) pour la sync full/incrémentale.
+    // Évite de charger des milliers de lignes en RAM d'un coup : on lit par
+    // fenêtres via OFFSET/FETCH et on envoie au fur et à mesure.
+    readPageSize: parseInt(process.env.SYNC_READ_PAGE_SIZE, 10) || 500,
+    // Taille des lots d'IDs actifs envoyés à /receive/deletions et /check.
+    // Un seul POST avec des milliers d'IDs génère un WHERE NOT IN (...) géant
+    // côté online (lent / risque de timeout) : on découpe.
+    deletionsChunkSize: parseInt(process.env.SYNC_DELETIONS_CHUNK, 10) || 1000,
   },
 
   sync: {
