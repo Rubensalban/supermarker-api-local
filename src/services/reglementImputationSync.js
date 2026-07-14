@@ -1,3 +1,4 @@
+const sql = require('mssql');
 const { getPool } = require('../config/database');
 const config = require('../config/env');
 const { mapReglementImputation } = require('../utils/mapper');
@@ -46,8 +47,8 @@ async function getChangedReglementImputationsPage(since, offset, limit) {
   const pool = await getPool();
   const req = pool.request()
     .input('lastSync', since)
-    .input('offset', offset)
-    .input('limit', limit);
+    .input('offset', sql.Int, offset)
+    .input('limit', sql.Int, limit);
   if (config.sync.startDate) req.input('startDate', config.sync.startDate);
 
   const result = await req.query(`

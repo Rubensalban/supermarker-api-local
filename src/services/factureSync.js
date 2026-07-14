@@ -1,3 +1,4 @@
+const sql = require('mssql');
 const { getPool } = require('../config/database');
 const config = require('../config/env');
 const { mapFacture, mapFactureLigne } = require('../utils/mapper');
@@ -15,6 +16,74 @@ function startDateClause(prefix) {
   return config.sync.startDate ? `AND ${prefix}DO_Date >= @startDate` : '';
 }
 
+// Colonnes des en-têtes de facture. cbDO_Piece est nécessaire pour joindre les
+// lignes (index seek) — voir fetchLignesForEntetes.
+const ENTETE_COLS = `
+  DO_Domaine, DO_Type, DO_Piece, DO_Date, DO_Ref, DO_Tiers,
+  DO_TotalHT, DO_TotalHTNet, DO_TotalTTC, DO_NetAPayer,
+  DO_MontantRegle, DO_Statut, DO_PieceOrig, cbModification, cbDO_Piece
+`;
+
+// Colonnes des lignes de facture à remonter.
+const LIGNE_COLS = `
+  l.DO_Domaine, l.DO_Type, l.DO_Piece, l.DL_Ligne, l.AR_Ref,
+  l.DL_Design, l.DL_Qte, l.DL_PrixUnitaire, l.DL_MontantHT,
+  l.DL_MontantTTC, l.DL_PieceBL, l.DL_PieceBC, l.DL_QteBL, l.DL_QteBC,
+  l.cbModification
+`;
+
+// Charge les lignes d'un ensemble d'en-têtes DÉJÀ chargés, via un
+// JOIN (VALUES ...) sur cbDO_Piece.
+//
+// PERF CRITIQUE : F_DOCLIGNE (~1,3M lignes) n'a PAS d'index sur DO_Piece, mais
+// sur cbDO_Piece (colonne char normalisée, indexée via IDL_LIGNE/IDL_REF :
+// (DO_Type, cbDO_Piece, ...)). Un filtre `DO_Piece IN (...)` force un SCAN de
+// toute la table (plusieurs secondes PAR pièce → timeout sur une page).
+//
+// On réutilise les cbDO_Piece (buffers) déjà récupérés dans les en-têtes et on
+// les injecte dans une table de valeurs `(VALUES (...),(...))` jointe à
+// F_DOCLIGNE sur (DO_Domaine, DO_Type, cbDO_Piece) → INDEX SEEK. On évite ainsi
+// de rejouer le tri + OFFSET/FETCH des en-têtes une 2e fois (bien plus rapide
+// mesuré : ~2s vs ~17s pour 100 factures).
+//
+// Les en-têtes DOIVENT donc contenir cbDO_Piece (voir SELECT_ENTETE_COLS).
+// SQL Server limite une requête à 2100 paramètres. On utilise 3 params par
+// en-tête (DO_Domaine, DO_Type, cbDO_Piece), donc on plafonne à 600 en-têtes
+// par requête (1800 params, marge de sécurité) et on boucle par sous-lots.
+const LIGNES_JOIN_CHUNK = 600;
+
+async function fetchLignesForEntetes(pool, entetes) {
+  const lignesMap = {};
+  if (entetes.length === 0) return lignesMap;
+
+  for (let start = 0; start < entetes.length; start += LIGNES_JOIN_CHUNK) {
+    const slice = entetes.slice(start, start + LIGNES_JOIN_CHUNK);
+    const request = pool.request();
+    slice.forEach((e, i) => {
+      request.input(`d${i}`, sql.Int, e.DO_Domaine);
+      request.input(`t${i}`, sql.Int, e.DO_Type);
+      request.input(`c${i}`, sql.VarBinary, e.cbDO_Piece);
+    });
+    const values = slice.map((_, i) => `(@d${i},@t${i},@c${i})`).join(',');
+
+    const lignesResult = await request.query(`
+      SELECT ${LIGNE_COLS}
+      FROM F_DOCLIGNE l
+      INNER JOIN (VALUES ${values}) AS e(DO_Domaine, DO_Type, cbDO_Piece)
+        ON e.DO_Domaine = l.DO_Domaine
+       AND e.DO_Type    = l.DO_Type
+       AND e.cbDO_Piece = l.cbDO_Piece
+      ORDER BY l.DO_Piece, l.DL_Ligne
+    `);
+
+    for (const row of lignesResult.recordset) {
+      if (!lignesMap[row.DO_Piece]) lignesMap[row.DO_Piece] = [];
+      lignesMap[row.DO_Piece].push(mapFactureLigne(row));
+    }
+  }
+  return lignesMap;
+}
+
 async function getChangedFactures(since) {
   const pool = await getPool();
 
@@ -25,9 +94,7 @@ async function getChangedFactures(since) {
   if (config.sync.startDate) reqEntetes.input('startDate', config.sync.startDate);
 
   const entetes = await reqEntetes.query(`
-      SELECT DO_Domaine, DO_Type, DO_Piece, DO_Date, DO_Ref, DO_Tiers,
-             DO_TotalHT, DO_TotalHTNet, DO_TotalTTC, DO_NetAPayer,
-             DO_MontantRegle, DO_Statut, DO_PieceOrig, cbModification
+      SELECT ${ENTETE_COLS}
       FROM F_DOCENTETE
       WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
         AND ${COMMERCIAL_TIERS_SUBQUERY}
@@ -38,29 +105,8 @@ async function getChangedFactures(since) {
 
   if (entetes.recordset.length === 0) return [];
 
-  const pieces = entetes.recordset.map(r => r.DO_Piece);
-
-  // Lignes pour ces factures
-  const request = pool.request();
-  pieces.forEach((piece, i) => request.input(`piece${i}`, piece));
-  const placeholders = pieces.map((_, i) => `@piece${i}`).join(',');
-
-  const lignesResult = await request.query(`
-    SELECT DO_Domaine, DO_Type, DO_Piece, DL_Ligne, AR_Ref,
-           DL_Design, DL_Qte, DL_PrixUnitaire, DL_MontantHT,
-           DL_MontantTTC, DL_PieceBL, DL_PieceBC, DL_QteBL, DL_QteBC,
-           cbModification
-    FROM F_DOCLIGNE
-    WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
-      AND DO_Piece IN (${placeholders})
-    ORDER BY DO_Piece, DL_Ligne
-  `);
-
-  const lignesMap = {};
-  for (const row of lignesResult.recordset) {
-    if (!lignesMap[row.DO_Piece]) lignesMap[row.DO_Piece] = [];
-    lignesMap[row.DO_Piece].push(mapFactureLigne(row));
-  }
+  // Lignes via JOIN (VALUES ...) sur cbDO_Piece déjà récupérés (index seek).
+  const lignesMap = await fetchLignesForEntetes(pool, entetes.recordset);
 
   return entetes.recordset.map(row => {
     const facture = mapFacture(row);
@@ -77,14 +123,12 @@ async function getChangedFacturesPage(since, offset, limit) {
 
   const reqEntetes = pool.request()
     .input('lastSync', since)
-    .input('offset', offset)
-    .input('limit', limit);
+    .input('offset', sql.Int, offset)
+    .input('limit', sql.Int, limit);
   if (config.sync.startDate) reqEntetes.input('startDate', config.sync.startDate);
 
   const entetes = await reqEntetes.query(`
-      SELECT DO_Domaine, DO_Type, DO_Piece, DO_Date, DO_Ref, DO_Tiers,
-             DO_TotalHT, DO_TotalHTNet, DO_TotalTTC, DO_NetAPayer,
-             DO_MontantRegle, DO_Statut, DO_PieceOrig, cbModification
+      SELECT ${ENTETE_COLS}
       FROM F_DOCENTETE
       WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
         AND ${COMMERCIAL_TIERS_SUBQUERY}
@@ -96,27 +140,9 @@ async function getChangedFacturesPage(since, offset, limit) {
 
   if (entetes.recordset.length === 0) return [];
 
-  const pieces = entetes.recordset.map(r => r.DO_Piece);
-  const request = pool.request();
-  pieces.forEach((piece, i) => request.input(`piece${i}`, piece));
-  const placeholders = pieces.map((_, i) => `@piece${i}`).join(',');
-
-  const lignesResult = await request.query(`
-    SELECT DO_Domaine, DO_Type, DO_Piece, DL_Ligne, AR_Ref,
-           DL_Design, DL_Qte, DL_PrixUnitaire, DL_MontantHT,
-           DL_MontantTTC, DL_PieceBL, DL_PieceBC, DL_QteBL, DL_QteBC,
-           cbModification
-    FROM F_DOCLIGNE
-    WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
-      AND DO_Piece IN (${placeholders})
-    ORDER BY DO_Piece, DL_Ligne
-  `);
-
-  const lignesMap = {};
-  for (const row of lignesResult.recordset) {
-    if (!lignesMap[row.DO_Piece]) lignesMap[row.DO_Piece] = [];
-    lignesMap[row.DO_Piece].push(mapFactureLigne(row));
-  }
+  // Lignes de LA page via JOIN (VALUES ...) sur les cbDO_Piece déjà récupérés
+  // (index seek), sans rejouer le tri/OFFSET ni IN(...) massif.
+  const lignesMap = await fetchLignesForEntetes(pool, entetes.recordset);
 
   return entetes.recordset.map(row => {
     const facture = mapFacture(row);

@@ -67,36 +67,71 @@ function chunk(arr, size) {
   return out;
 }
 
-// Envoie un lot de records par batches vers l'API-ONLINE, avec re-queue des
-// non-confirmés. Retourne le nombre total confirmé. Utilisé par la lecture
-// paginée (full + incremental).
-async function sendRecords(entityType, records) {
-  let confirmedTotal = 0;
-  for (let i = 0; i < records.length; i += config.vps.batchSize) {
-    const batch = records.slice(i, i + config.vps.batchSize);
-    try {
-      const ack = await vpsService.sendBatch(entityType, 'UPSERT', batch);
-      metrics.syncRecordsProcessedTotal.inc({ entity: entityType, operation: 'UPSERT' }, batch.length);
+// Envoie UN batch et gère le re-queue des non-confirmés. Retourne le nombre
+// confirmé. Lève 'vps_unreachable_during_send' si le VPS est injoignable (pour
+// que l'appelant arrête la vague et re-queue le reste).
+async function sendOneBatch(entityType, batch) {
+  try {
+    const ack = await vpsService.sendBatch(entityType, 'UPSERT', batch);
+    metrics.syncRecordsProcessedTotal.inc({ entity: entityType, operation: 'UPSERT' }, batch.length);
 
-      const confirmed = new Set(Array.isArray(ack && ack.processed_sage_ids) ? ack.processed_sage_ids : []);
-      const missing = batch.filter(r => !confirmed.has(r.sage_id));
-      confirmedTotal += (batch.length - missing.length);
-      if (missing.length > 0) {
-        syncLogger.warn('Records non confirmes par API-VPS, re-queue', {
-          entity: entityType,
-          sent: batch.length,
-          confirmed: confirmed.size,
-          missing: missing.length,
-          missing_ids: missing.map(r => r.sage_id).slice(0, 20),
-        });
-        for (const record of missing) {
+    const confirmed = new Set(Array.isArray(ack && ack.processed_sage_ids) ? ack.processed_sage_ids : []);
+    const missing = batch.filter(r => !confirmed.has(r.sage_id));
+    if (missing.length > 0) {
+      syncLogger.warn('Records non confirmes par API-VPS, re-queue', {
+        entity: entityType,
+        sent: batch.length,
+        confirmed: confirmed.size,
+        missing: missing.length,
+        missing_ids: missing.map(r => r.sage_id).slice(0, 20),
+      });
+      for (const record of missing) {
+        queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+      }
+    }
+    return batch.length - missing.length;
+  } catch {
+    const err = new Error('vps_unreachable_during_send');
+    err.vpsDown = true;
+    throw err;
+  }
+}
+
+// Envoie un lot de records par batches vers l'API-ONLINE, avec une concurrence
+// bornée (backpressure). Les batches partent par vagues de `sendConcurrency`
+// pour améliorer le débit sans saturer le VPS ni la pool PostgreSQL. Si le VPS
+// tombe pendant une vague, on re-queue TOUT ce qui n'a pas encore été envoyé
+// (batches en cours d'échec + batches restants) et on remonte l'erreur.
+async function sendRecords(entityType, records) {
+  const batches = chunk(records, config.vps.batchSize);
+  const concurrency = Math.max(1, config.sync.sendConcurrency);
+  let confirmedTotal = 0;
+
+  for (let i = 0; i < batches.length; i += concurrency) {
+    const wave = batches.slice(i, i + concurrency);
+    const results = await Promise.allSettled(
+      wave.map(batch => sendOneBatch(entityType, batch))
+    );
+
+    let vpsDown = false;
+    results.forEach((res, k) => {
+      if (res.status === 'fulfilled') {
+        confirmedTotal += res.value;
+      } else if (res.reason && res.reason.vpsDown) {
+        vpsDown = true;
+        // Ce batch a échoué avant enqueue : re-queue ses records.
+        for (const record of wave[k]) {
           queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
         }
       }
-    } catch {
-      // VPS devenu inaccessible : mettre le reste de CE lot en queue et signaler.
-      for (const record of records.slice(i)) {
-        queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+    });
+
+    if (vpsDown) {
+      // Re-queue toutes les vagues suivantes non envoyées.
+      for (const batch of batches.slice(i + concurrency)) {
+        for (const record of batch) {
+          queueService.enqueue(entityType, 'UPSERT', record.sage_id, record);
+        }
       }
       throw new Error('vps_unreachable_during_send');
     }

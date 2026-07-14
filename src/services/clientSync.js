@@ -1,3 +1,4 @@
+const sql = require('mssql');
 const { getPool } = require('../config/database');
 const config = require('../config/env');
 const { mapClient } = require('../utils/mapper');
@@ -31,8 +32,8 @@ async function getChangedClientsPage(since, offset, limit) {
   const pool = await getPool();
   const result = await pool.request()
     .input('lastSync', since)
-    .input('offset', offset)
-    .input('limit', limit)
+    .input('offset', sql.Int, offset)
+    .input('limit', sql.Int, limit)
     .query(`
       SELECT ${SELECT_COLS}
       FROM F_COMPTET

@@ -41,14 +41,6 @@ module.exports = {
     batchSize: parseInt(process.env.SYNC_BATCH_SIZE, 10) || 50,
     retryMax: parseInt(process.env.SYNC_RETRY_MAX, 10) || 3,
     retryBaseDelay: parseInt(process.env.SYNC_RETRY_BASE_DELAY, 10) || 2000,
-    // Taille des pages de lecture Sage (SQL Server) pour la sync full/incrémentale.
-    // Évite de charger des milliers de lignes en RAM d'un coup : on lit par
-    // fenêtres via OFFSET/FETCH et on envoie au fur et à mesure.
-    readPageSize: parseInt(process.env.SYNC_READ_PAGE_SIZE, 10) || 500,
-    // Taille des lots d'IDs actifs envoyés à /receive/deletions et /check.
-    // Un seul POST avec des milliers d'IDs génère un WHERE NOT IN (...) géant
-    // côté online (lent / risque de timeout) : on découpe.
-    deletionsChunkSize: parseInt(process.env.SYNC_DELETIONS_CHUNK, 10) || 1000,
   },
 
   sync: {
@@ -57,16 +49,14 @@ module.exports = {
     queueProcessInterval: parseInt(process.env.QUEUE_PROCESS_INTERVAL, 10) || 60,
     healthcheckInterval: parseInt(process.env.HEALTHCHECK_INTERVAL, 10) || 60,
     healthcheckBackoffMax: parseInt(process.env.HEALTHCHECK_BACKOFF_MAX, 10) || 300,
-    // Date à partir de laquelle on récupère les données Sage Compta.
-    // Format YYYY-MM-DD (ex: 2025-01-01). Ignorée si vide.
-    // - Factures : filtre sur DO_Date >= SYNC_START_DATE
-    // - Règlements : filtre sur RG_Date >= SYNC_START_DATE
-    // - Clients/articles : sert de borne basse à cbModification au premier run
     startDate: (process.env.SYNC_START_DATE || '').trim() || null,
-    // TTL du cache en mémoire de la liste des AR_Ref vendus aux commerciaux
-    // (évite de retaper la jointure F_DOCLIGNE × F_DOCENTETE × F_COMPTET à chaque
-    // tick de sync incrémentale). En secondes. 0 = désactivé.
     articleCacheTtl: parseInt(process.env.SYNC_ARTICLE_CACHE_TTL, 10) || 600,
+    readPageSize: parseInt(process.env.SYNC_READ_PAGE_SIZE, 10) || 500,
+    deletionsChunkSize: parseInt(process.env.SYNC_DELETIONS_CHUNK, 10) || 1000,
+    // Nombre de batches envoyés en parallèle vers l'API-ONLINE (backpressure).
+    // 1 = strictement séquentiel (comportement historique). 3-4 = bon compromis
+    // débit/charge VPS sans saturer la pool PostgreSQL côté online.
+    sendConcurrency: parseInt(process.env.SYNC_SEND_CONCURRENCY, 10) || 3,
   },
 
   circuitBreaker: {
