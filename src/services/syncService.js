@@ -27,11 +27,13 @@ const entityConfig = {
     getChanged: factureSync.getChangedFactures,
     getChangedPage: factureSync.getChangedFacturesPage,
     getAllIds: factureSync.getAllFactureIds,
+    getByIds: factureSync.getFacturesByIds,
   },
   reglement: {
     getChanged: reglementSync.getChangedReglements,
     getChangedPage: reglementSync.getChangedReglementsPage,
     getAllIds: reglementSync.getAllReglementIds,
+    getByIds: reglementSync.getReglementsByIds,
   },
   // Imputations placees apres reglement : l'ordre des entites est conserve
   // par Object.keys, donc syncAllIncremental traite reglement avant les
@@ -40,6 +42,7 @@ const entityConfig = {
     getChanged: reglementImputationSync.getChangedReglementImputations,
     getChangedPage: reglementImputationSync.getChangedReglementImputationsPage,
     getAllIds: reglementImputationSync.getAllReglementImputationIds,
+    getByIds: reglementImputationSync.getReglementImputationsByIds,
   },
 };
 

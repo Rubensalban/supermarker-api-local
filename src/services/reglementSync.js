@@ -64,4 +64,23 @@ async function getAllReglementIds() {
   return result.recordset.map(row => String(row.RG_No));
 }
 
-module.exports = { getChangedReglements, getChangedReglementsPage, getAllReglementIds };
+// Récupère les règlements par leurs RG_No (sage_id). Utilisé par la
+// réconciliation du full sync pour re-créer côté online les règlements
+// manquants. Les ids sont des chaînes ("RG_No").
+async function getReglementsByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const pool = await getPool();
+  const request = pool.request();
+  ids.forEach((id, i) => request.input(`id${i}`, sql.Int, parseInt(id, 10)));
+  const placeholders = ids.map((_, i) => `@id${i}`).join(',');
+  const result = await request.query(`
+    SELECT RG_No, CT_NumPayeur, RG_Date, RG_Reference, RG_Libelle,
+           RG_Montant, RG_MontantDev, N_Reglement, RG_Impute, RG_Compta,
+           RG_TypeReg, cbModification
+    FROM F_CREGLEMENT
+    WHERE RG_No IN (${placeholders})
+  `);
+  return result.recordset.map(mapReglement);
+}
+
+module.exports = { getChangedReglements, getChangedReglementsPage, getAllReglementIds, getReglementsByIds };

@@ -164,4 +164,38 @@ async function getAllFactureIds() {
   return result.recordset.map(row => row.DO_Piece);
 }
 
-module.exports = { getChangedFactures, getChangedFacturesPage, getAllFactureIds };
+// Récupère les factures (en-têtes + lignes) par leurs DO_Piece (sage_id).
+// Utilisé par la réconciliation du full sync pour re-créer côté online les
+// factures manquantes. Chunké en interne pour rester sous la limite de
+// paramètres SQL Server.
+async function getFacturesByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const pool = await getPool();
+  const CHUNK = 600;
+  const out = [];
+
+  for (let start = 0; start < ids.length; start += CHUNK) {
+    const slice = ids.slice(start, start + CHUNK);
+    const request = pool.request();
+    slice.forEach((piece, i) => request.input(`p${i}`, piece));
+    const placeholders = slice.map((_, i) => `@p${i}`).join(',');
+
+    const entetes = await request.query(`
+      SELECT ${ENTETE_COLS}
+      FROM F_DOCENTETE
+      WHERE DO_Domaine = 0 AND DO_Type IN (6, 7)
+        AND DO_Piece IN (${placeholders})
+    `);
+    if (entetes.recordset.length === 0) continue;
+
+    const lignesMap = await fetchLignesForEntetes(pool, entetes.recordset);
+    for (const row of entetes.recordset) {
+      const facture = mapFacture(row);
+      facture.lignes = lignesMap[row.DO_Piece] || [];
+      out.push(facture);
+    }
+  }
+  return out;
+}
+
+module.exports = { getChangedFactures, getChangedFacturesPage, getAllFactureIds, getFacturesByIds };

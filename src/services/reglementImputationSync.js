@@ -83,8 +83,43 @@ async function getAllReglementImputationIds() {
   return result.recordset.map((row) => `${row.RG_No}-${row.DR_No}`);
 }
 
+// Récupère les imputations par leurs sage_id composites "{RG_No}-{DR_No}".
+// Utilisé par la réconciliation du full sync. On filtre sur (RG_No, DR_No)
+// via une table de valeurs, en ne gardant que les paires demandées.
+async function getReglementImputationsByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const pairs = ids
+    .map((id) => {
+      const [rg, dr] = String(id).split('-');
+      return { rg: parseInt(rg, 10), dr: parseInt(dr, 10) };
+    })
+    .filter((p) => Number.isInteger(p.rg) && Number.isInteger(p.dr));
+  if (pairs.length === 0) return [];
+
+  const pool = await getPool();
+  const request = pool.request();
+  pairs.forEach((p, i) => {
+    request.input(`rg${i}`, sql.Int, p.rg);
+    request.input(`dr${i}`, sql.Int, p.dr);
+  });
+  const values = pairs.map((_, i) => `(@rg${i},@dr${i})`).join(',');
+
+  const result = await request.query(`
+    SELECT rc.RG_No, rc.DR_No, rc.DO_Domaine, rc.DO_Type, rc.DO_Piece,
+           rc.RC_Montant, rc.RG_TypeReg,
+           CASE WHEN rc.cbModification > c.cbModification
+                THEN rc.cbModification ELSE c.cbModification END AS cbModification
+    FROM F_REGLECH rc
+    INNER JOIN F_CREGLEMENT c ON c.RG_No = rc.RG_No
+    INNER JOIN (VALUES ${values}) AS want(RG_No, DR_No)
+      ON want.RG_No = rc.RG_No AND want.DR_No = rc.DR_No
+  `);
+  return result.recordset.map(mapReglementImputation);
+}
+
 module.exports = {
   getChangedReglementImputations,
   getChangedReglementImputationsPage,
   getAllReglementImputationIds,
+  getReglementImputationsByIds,
 };
