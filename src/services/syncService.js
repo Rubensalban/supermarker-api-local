@@ -22,6 +22,7 @@ const entityConfig = {
     getChanged: articleSync.getChangedArticles,
     // Pas de getChangedPage : le set éligible est déjà filtré en RAM via cache.
     getAllIds: articleSync.getAllArticleIds,
+    getByIds: articleSync.getArticlesByIds,
   },
   facture: {
     getChanged: factureSync.getChangedFactures,

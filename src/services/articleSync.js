@@ -149,4 +149,21 @@ async function getAllArticleIds() {
   return Array.from(set);
 }
 
-module.exports = { getChangedArticles, getAllArticleIds, invalidateCache };
+// Récupère les articles par leurs AR_Ref (sage_id). Utilisé par la
+// réconciliation du full sync pour re-créer côté online les articles
+// manquants (sans dépendre de cbModification). Chunké pour rester sous la
+// limite de paramètres SQL Server.
+async function getArticlesByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const pool = await getPool();
+  const CHUNK = 1000;
+  const out = [];
+  for (let start = 0; start < ids.length; start += CHUNK) {
+    const slice = ids.slice(start, start + CHUNK);
+    const rows = await fetchArticlesByRefs(pool, slice);
+    out.push(...rows.map(mapArticle));
+  }
+  return out;
+}
+
+module.exports = { getChangedArticles, getAllArticleIds, getArticlesByIds, invalidateCache };
