@@ -139,6 +139,27 @@ function mapReglementImputation(row) {
   };
 }
 
+// Miroir d'une ecriture comptable F_ECRITUREC (Sage) sur un compte tiers.
+// Sert au calcul du SOLDE COMPTABLE reel (= analyse de risque Sage) :
+// solde = Σ (debit - credit) des ecritures, ou EC_Sens 0=debit, 1=credit.
+// sage_id = EC_No (identifiant unique de l'ecriture).
+function mapEcriture(row) {
+  return {
+    sage_id: String(row.EC_No),
+    sage_updated_at: row.cbModification,
+    data: {
+      ec_no: row.EC_No,
+      ct_num: row.CT_Num,
+      ec_date: row.EC_Date,
+      jm_date: row.JM_Date,
+      ec_sens: row.EC_Sens,          // 0 = debit, 1 = credit
+      ec_montant: row.EC_Montant,
+      ec_lettrage: row.EC_Lettrage || null,
+      ec_intitule: row.EC_Intitule || null,
+    },
+  };
+}
+
 module.exports = {
   mapClient,
   mapArticle,
@@ -146,4 +167,5 @@ module.exports = {
   mapFactureLigne,
   mapReglement,
   mapReglementImputation,
+  mapEcriture,
 };

@@ -10,6 +10,7 @@ const articleSync = require('./articleSync');
 const factureSync = require('./factureSync');
 const reglementSync = require('./reglementSync');
 const reglementImputationSync = require('./reglementImputationSync');
+const ecritureSync = require('./ecritureSync');
 
 const entityConfig = {
   client: {
@@ -44,6 +45,14 @@ const entityConfig = {
     getChangedPage: reglementImputationSync.getChangedReglementImputationsPage,
     getAllIds: reglementImputationSync.getAllReglementImputationIds,
     getByIds: reglementImputationSync.getReglementImputationsByIds,
+  },
+  // Écritures comptables : servent au calcul du solde comptable réel
+  // (= analyse de risque Sage) côté online.
+  ecriture: {
+    getChanged: ecritureSync.getChangedEcritures,
+    getChangedPage: ecritureSync.getChangedEcrituresPage,
+    getAllIds: ecritureSync.getAllEcritureIds,
+    getByIds: ecritureSync.getEcrituresByIds,
   },
 };
 
