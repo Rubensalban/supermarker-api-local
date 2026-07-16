@@ -1,34 +1,33 @@
 'use strict';
 
 /**
- * Solde & dette d'un commercial (tiers Sage), calculés DIRECTEMENT dans Sage
- * (MSSQL) via la connexion de l'API-LOCAL, en reproduisant la logique de
- * BALANCE TIERS de Sage 100 Cloud.
+ * Affiche les 3 informations d'un commercial, EXACTEMENT comme l'app mobile
+ * (endpoint /account/summary), calculées directement dans Sage (MSSQL) via la
+ * connexion de l'API-LOCAL. Sert de contrôle : ces valeurs doivent être
+ * identiques à celles renvoyées par l'API-ONLINE.
  *
- * ── Logique Sage 100 Cloud (balance du compte payeur) ──────────────────────
- *   • Total réglé (dû au sens Sage) = Σ RG_Montant des règlements du tiers
- *                                     (F_CREGLEMENT, filtré sur RG_Date).
- *   • Total imputé                  = Σ RC_Montant des imputations de ces
- *                                     règlements (F_REGLECH), filtré sur RG_Date.
- *   • Solde (reste à imputer)       = Total réglé − Total imputé.
+ * ── Les 3 informations (chacune depuis sa source Sage) ──────────────────────
+ *   1. Solde de ses factures = Σ HT des factures de vente (F_DOCENTETE.DO_TotalHT)
+ *   2. Sa dette              = solde comptable = Σ (débit − crédit) des écritures
+ *                              (F_ECRITUREC) — c'est l'analyse de risque Sage 100.
+ *   3. Montant déjà payé     = Σ RG_Montant des règlements du tiers (F_CREGLEMENT)
  *
- * IMPORTANT : le filtre de période porte sur RG_Date (date du règlement), PAS
- * sur la date de la facture — c'est ce que fait Sage 100 Cloud.
+ * IMPORTANT — pourquoi solde_factures ≠ dette + payé :
+ *   Les 3 chiffres viennent de 3 tables/périmètres DIFFÉRENTS et ne s'additionnent
+ *   pas. Le solde des factures est en HT ; la dette est un calcul COMPTABLE (TTC +
+ *   TVA + avoirs + régularisations) équilibré par débit−crédit. La seule équation
+ *   vraie est comptable : dette = débit comptable − crédit comptable.
  *
- * On affiche aussi, à titre indicatif, la vue « par facture » (net à payer vs
- * imputations) qui sert à l'app mobile pour le statut payé/partiel/non payé.
+ * Filtre de période :
+ *   - factures  : DO_Date  (date de la facture)
+ *   - dette     : EC_Date  (date de l'écriture comptable)
+ *   - règlements: RG_Date  (date du règlement)
  *
  * ── Utilisation ────────────────────────────────────────────────────────────
  *   node scripts/solde-commercial.js [CT_NUM] [DATE_DEBUT] [DATE_FIN]
- *
- *   CT_NUM      : code tiers Sage (défaut: CMANU)
- *   DATE_DEBUT  : YYYY-MM-DD (défaut: SYNC_START_DATE ; "all" = tout l'historique)
- *   DATE_FIN    : YYYY-MM-DD (optionnel)
- *
- * Exemples :
- *   node scripts/solde-commercial.js CMANU
- *   node scripts/solde-commercial.js CMANU 2024-01-01 2024-12-31
- *   node scripts/solde-commercial.js CMANU all
+ *     CT_NUM     : code tiers Sage (défaut: CMANU)
+ *     DATE_DEBUT : YYYY-MM-DD (défaut: SYNC_START_DATE ; "all" = tout l'historique)
+ *     DATE_FIN   : YYYY-MM-DD (optionnel)
  */
 
 const config = require('../src/config/env');
@@ -50,61 +49,70 @@ async function main() {
   if (dateDebut) req.input('d1', dateDebut);
   if (dateFin) req.input('d2', dateFin);
 
-  // Clauses de date : RG_Date pour les règlements/imputations, DO_Date pour les factures.
-  const rgDebut = dateDebut ? 'AND c.RG_Date >= @d1' : '';
-  const rgFin = dateFin ? 'AND c.RG_Date <= @d2' : '';
+  // Clauses de date par table (chacune sur sa propre colonne de date).
   const doDebut = dateDebut ? 'AND e.DO_Date >= @d1' : '';
   const doFin = dateFin ? 'AND e.DO_Date <= @d2' : '';
+  const ecDebut = dateDebut ? 'AND ec.EC_Date >= @d1' : '';
+  const ecFin = dateFin ? 'AND ec.EC_Date <= @d2' : '';
+  const rgDebut = dateDebut ? 'AND c.RG_Date >= @d1' : '';
+  const rgFin = dateFin ? 'AND c.RG_Date <= @d2' : '';
 
   const result = await req.query(`
     SELECT
-      -- ── Balance tiers Sage 100 Cloud (source: compte payeur) ──────────────
-      (SELECT SUM(c.RG_Montant)
-         FROM F_CREGLEMENT c
-        WHERE c.CT_NumPayeur = @ct ${rgDebut} ${rgFin})                       AS total_regle,
-
-      (SELECT SUM(rc.RC_Montant)
-         FROM F_REGLECH rc
-         INNER JOIN F_CREGLEMENT c ON c.RG_No = rc.RG_No
-        WHERE c.CT_NumPayeur = @ct ${rgDebut} ${rgFin})                       AS total_impute,
-
-      (SELECT COUNT(*)
-         FROM F_CREGLEMENT c
-        WHERE c.CT_NumPayeur = @ct ${rgDebut} ${rgFin})                       AS nb_reglements,
-
-      -- ── Vue factures (indicatif : statut payé/partiel/non payé) ────────────
+      -- 1. Solde de ses factures = Σ HT des factures de vente
+      (SELECT SUM(e.DO_TotalHT)
+         FROM F_DOCENTETE e
+        WHERE e.DO_Domaine = 0 AND e.DO_Type IN (6,7) AND e.DO_Tiers = @ct ${doDebut} ${doFin}) AS solde_factures,
       (SELECT COUNT(*)
          FROM F_DOCENTETE e
         WHERE e.DO_Domaine = 0 AND e.DO_Type IN (6,7) AND e.DO_Tiers = @ct ${doDebut} ${doFin}) AS nb_factures,
 
-      (SELECT SUM(e.DO_NetAPayer)
-         FROM F_DOCENTETE e
-        WHERE e.DO_Domaine = 0 AND e.DO_Type IN (6,7) AND e.DO_Tiers = @ct ${doDebut} ${doFin}) AS total_net_a_payer
+      -- 2. Dette = solde comptable = Σ (débit − crédit) des écritures (analyse de risque Sage)
+      (SELECT SUM(CASE WHEN ec.EC_Sens = 0 THEN ec.EC_Montant ELSE -ec.EC_Montant END)
+         FROM F_ECRITUREC ec
+        WHERE ec.CT_Num = @ct ${ecDebut} ${ecFin}) AS dette,
+      (SELECT SUM(CASE WHEN ec.EC_Sens = 0 THEN ec.EC_Montant ELSE 0 END)
+         FROM F_ECRITUREC ec
+        WHERE ec.CT_Num = @ct ${ecDebut} ${ecFin}) AS debit_comptable,
+      (SELECT SUM(CASE WHEN ec.EC_Sens = 1 THEN ec.EC_Montant ELSE 0 END)
+         FROM F_ECRITUREC ec
+        WHERE ec.CT_Num = @ct ${ecDebut} ${ecFin}) AS credit_comptable,
+
+      -- 3. Montant déjà payé = Σ RG_Montant des règlements du tiers
+      (SELECT SUM(c.RG_Montant)
+         FROM F_CREGLEMENT c
+        WHERE c.CT_NumPayeur = @ct ${rgDebut} ${rgFin}) AS montant_paye,
+      (SELECT COUNT(*)
+         FROM F_CREGLEMENT c
+        WHERE c.CT_NumPayeur = @ct ${rgDebut} ${rgFin}) AS nb_reglements
   `);
 
   const r = result.recordset[0];
-  const totalRegle = Number(r.total_regle || 0);
-  const totalImpute = Number(r.total_impute || 0);
-  const solde = totalRegle - totalImpute; // reste à imputer (logique Sage)
+  const soldeFactures = Number(r.solde_factures || 0);
+  const dette = Number(r.dette || 0);
+  const montantPaye = Number(r.montant_paye || 0);
 
   const periode = dateDebut
     ? `du ${dateDebut} au ${dateFin || "aujourd'hui"}`
     : "(tout l'historique Sage)";
 
-  console.log('══════════════════════════════════════════════════════');
-  console.log(`  SOLDE & DETTE — commercial ${ctNum}  ${periode}`);
-  console.log(`  Source: Sage 100 (${config.mssql.database}) — logique balance tiers`);
-  console.log(`  Période filtrée sur RG_Date (date du règlement)`);
-  console.log('══════════════════════════════════════════════════════');
-  console.log(`  Nb règlements             : ${r.nb_reglements}`);
-  console.log(`  Total réglé (Σ RG_Montant): ${fmt(totalRegle)}`);
-  console.log(`  Total imputé (Σ RC_Montant): ${fmt(totalImpute)}`);
-  console.log('  ────────────────────────────────────────────────────');
-  console.log(`  ► SOLDE (reste à imputer) : ${fmt(solde)}`);
-  console.log('  ────────────────────────────────────────────────────');
-  console.log(`  Indicatif — factures      : ${r.nb_factures}`);
-  console.log(`  Indicatif — net à payer   : ${fmt(r.total_net_a_payer)}`);
-  console.log('══════════════════════════════════════════════════════');
+  console.log('══════════════════════════════════════════════════════════');
+  console.log(`  COMMERCIAL ${ctNum}  ${periode}`);
+  console.log(`  Source: Sage 100 (${config.mssql.database})`);
+  console.log('══════════════════════════════════════════════════════════');
+  console.log('  LES 3 INFORMATIONS AFFICHÉES DANS L\'APP :');
+  console.log('  ────────────────────────────────────────────────────────');
+  console.log(`  1. Solde de ses factures : ${fmt(soldeFactures)}   (${r.nb_factures} factures, HT)`);
+  console.log(`  2. Sa dette              : ${fmt(dette)}   ◄── ce qu'il doit`);
+  console.log(`  3. Montant déjà payé     : ${fmt(montantPaye)}   (${r.nb_reglements} règlements)`);
+  console.log('══════════════════════════════════════════════════════════');
+  console.log('  JUSTIFICATION (pourquoi 1 ≠ 2 + 3) :');
+  console.log('  Les 3 chiffres viennent de 3 sources différentes et ne');
+  console.log('  s\'additionnent pas. La dette est un calcul COMPTABLE :');
+  console.log(`    débit comptable  : ${fmt(r.debit_comptable)}`);
+  console.log(`    crédit comptable : ${fmt(r.credit_comptable)}`);
+  console.log(`    dette = débit − crédit = ${fmt(dette)}  ✓`);
+  console.log('══════════════════════════════════════════════════════════');
 }
 
 main()
