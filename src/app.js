@@ -91,6 +91,9 @@ app.listen(PORT, () => {
   // Demarrer les cron jobs immediatement (ne pas bloquer sur le healthcheck)
   cronService.start();
 
+  // Watcher quasi temps reel des tables Sage (declenche la sync a la modification)
+  require('./services/changeWatcher').start();
+
   // Healthcheck initial en arriere-plan
   healthService.checkAll()
     .then(status => appLogger.info('Healthcheck initial', status))

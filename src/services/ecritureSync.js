@@ -3,10 +3,6 @@ const { getPool } = require('../config/database');
 const config = require('../config/env');
 const { mapEcriture } = require('../utils/mapper');
 
-// Écritures comptables (F_ECRITUREC) des comptes tiers COMMERCIAL. Elles
-// servent à calculer le SOLDE COMPTABLE réel côté online (= analyse de risque
-// Sage) : solde = Σ (débit − crédit). Filtre commercial identique aux autres
-// entités, + borne SYNC_START_DATE sur EC_Date.
 const COMMERCIAL_SUBQUERY = `
   e.CT_Num IN (
     SELECT CT_Num FROM F_COMPTET
@@ -14,7 +10,7 @@ const COMMERCIAL_SUBQUERY = `
   )
 `;
 
-const startDateClause = () => (config.sync.startDate ? 'AND e.EC_Date >= @startDate' : '');
+const startDateClause = () => '';
 
 const SELECT_COLS = `
   e.EC_No, e.CT_Num, e.EC_Date, e.JM_Date, e.EC_Sens,

@@ -189,7 +189,11 @@ async function syncIncremental(entityType) {
     return { entity: entityType, skipped: true, reason: 'entity_locked' };
   }
 
-  const meta = getMeta.get(entityType);
+  let meta = getMeta.get(entityType);
+  if (!meta) {
+    db.prepare('INSERT OR IGNORE INTO sync_metadata (entity_type) VALUES (?)').run(entityType);
+    meta = getMeta.get(entityType);
+  }
   // Borne basse : SYNC_START_DATE (si définie) prime sur 1970 au tout premier run.
   // Une fois que last_sync_at est posé, il prend le dessus.
   const startFloor = config.sync.startDate
@@ -205,9 +209,7 @@ async function syncIncremental(entityType) {
     let totalRead = 0;
 
     if (conf.getChangedPage) {
-      // ─── Lecture paginée (streaming) : on lit Sage par fenêtres et on envoie
-      // au fil de l'eau. Le pic mémoire est borné à une page, pas au delta total.
-      // Ordre stable garanti par les getChangedPage (cbModification + clé).
+
       let offset = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -219,10 +221,6 @@ async function syncIncremental(entityType) {
           try {
             await sendRecords(entityType, page);
           } catch {
-            // VPS tombé pendant l'envoi : sendRecords a déjà mis le reste de la
-            // page en queue. On enfile aussi les pages suivantes non lues n'a
-            // pas de sens (on ne les a pas), on arrête la lecture : le prochain
-            // cycle reprendra depuis `since` (idempotent côté online).
             break;
           }
         } else {

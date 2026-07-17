@@ -57,6 +57,11 @@ module.exports = {
     // 1 = strictement séquentiel (comportement historique). 3-4 = bon compromis
     // débit/charge VPS sans saturer la pool PostgreSQL côté online.
     sendConcurrency: parseInt(process.env.SYNC_SEND_CONCURRENCY, 10) || 3,
+    // Watcher quasi temps réel : surveille last_user_update des tables Sage
+    // (DMV sys.dm_db_index_usage_stats, coût ~0) et déclenche la sync
+    // incrémentale de l'entité modifiée en quelques secondes.
+    watchEnabled: process.env.SYNC_WATCH_ENABLED !== 'false',
+    watchInterval: parseInt(process.env.SYNC_WATCH_INTERVAL, 10) || 5,
   },
 
   circuitBreaker: {
